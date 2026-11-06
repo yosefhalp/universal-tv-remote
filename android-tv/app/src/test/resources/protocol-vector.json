@@ -1,0 +1,22 @@
+{
+  "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "clientNonce": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+  "agentNonce": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8",
+  "device": "0123456789abcdef0123456789abcdef",
+  "controller": "fedcba9876543210fedcba9876543210",
+  "clientProof": "dHZXzb2wGWvs5qQnPpU01oQcYVXIkfqn9CMcBgHO8tU",
+  "agentProof": "jBQBx1edtddAhrvNzfsUi7bXzH4Tj8mm_M6a5BGag4E",
+  "value": {
+    "text": "שלום 🚀"
+  },
+  "fromClient": {
+    "t": "data",
+    "s": 0,
+    "b": "9dNji4NYh09rzQn7KByeCxP_z9kq1u9ewsK7WXkuEKOYwZ9rPC0BrQ"
+  },
+  "fromAgent": {
+    "t": "data",
+    "s": 0,
+    "b": "UbwV9L5pvqEYUOmFEC2nuz_htTfxvGqUtHDZDvjzd2nbINx_GTyXgw"
+  }
+}

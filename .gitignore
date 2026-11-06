@@ -4,3 +4,17 @@ dist/
 tests/output/
 anywhere/dist/
 .wrangler/
+android-tv/.gradle/
+android-tv/local.properties
+android-tv/**/build/
+android-tv/.idea/
+artifacts/
+.local/
+**/.local/
+android-tv/build/
+*.jks
+*.keystore
+*.env
+!*.env.example
+WORK_LOG.md
+support/web/*.apk

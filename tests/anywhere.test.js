@@ -81,7 +81,7 @@ async function setup(now) {
   agent.start();
   for (let i = 0; i < 100 && agent.status !== 'online'; i += 1) await delay(20);
   return { relay, url, agent, adapter, states, done: async () => {
-    if (agent.ws) { agent.ws.onclose = null; agent.ws.close(); }
+    agent.stop();
     await relay.close();
   } };
 }

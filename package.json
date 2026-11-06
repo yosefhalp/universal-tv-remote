@@ -8,11 +8,13 @@
   "scripts": {
     "start": "electron .",
     "start:fake": "node tests/run-with-fake-tv.js",
-    "test": "node --test tests/webos.test.js tests/brands.test.js tests/anywhere.test.js",
+    "test": "node --test tests/webos.test.js tests/brands.test.js tests/anywhere.test.js tests/support-*.test.mjs",
     "test:e2e": "node tests/e2e.js",
     "test:brands": "node tests/e2e-brands.js",
     "test:anywhere": "node anywhere/build.js && node tests/e2e-anywhere.js",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win portable",
+    "support": "node support/server/server.mjs",
+    "test:support": "node --test tests/support-*.test.mjs"
   },
   "dependencies": {
     "selfsigned": "^2.4.1",

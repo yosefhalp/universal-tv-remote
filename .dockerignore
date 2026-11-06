@@ -1,0 +1,8 @@
+**
+!support/
+!support/package.json
+!support/package-lock.json
+!support/server/
+!support/server/**
+!support/web/
+!support/web/**

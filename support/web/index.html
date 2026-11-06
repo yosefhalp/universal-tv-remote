@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111216" />
+    <meta name="referrer" content="no-referrer" />
+    <title>קרוב — מרכז השליטה</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="app.webmanifest" />
+    <link rel="stylesheet" href="style.css?v=2" />
+    <script type="module" src="app.mjs"></script>
+  </head>
+  <body>
+    <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10H15v-7H9v7H3Z" /></symbol>
+        <symbol id="i-back" viewBox="0 0 24 24">
+          <path d="m9 5-6 6 6 6M3 11h11a6 6 0 0 1 6 6v3" />
+        </symbol>
+        <symbol id="i-settings" viewBox="0 0 24 24">
+          <path d="M4 6h16M4 12h16M4 18h16M8 3v6m8 0v6m-7 0v6" />
+        </symbol>
+        <symbol id="i-expand" viewBox="0 0 24 24">
+          <path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6" />
+        </symbol>
+        <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m7 14 5-5 5 5" /></symbol>
+        <symbol id="i-volume" viewBox="0 0 24 24">
+          <path d="M3 9h4l5-4v14l-5-4H3ZM16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" />
+        </symbol>
+        <symbol id="i-play" viewBox="0 0 24 24"><path d="m4 5 9 7-9 7ZM17 5v14m4-14v14" /></symbol>
+        <symbol id="i-forward" viewBox="0 0 24 24"><path d="m3 5 8 7-8 7Zm10 0 8 7-8 7Z" /></symbol>
+        <symbol id="i-tv" viewBox="0 0 24 24">
+          <rect x="2" y="4" width="20" height="14" rx="2" />
+          <path d="M8 22h8m-4-4v4" />
+        </symbol>
+        <symbol id="i-lock" viewBox="0 0 24 24">
+          <rect x="5" y="10" width="14" height="11" rx="3" />
+          <path d="M8 10V6a4 4 0 0 1 8 0v4m-4 4v3" />
+        </symbol>
+      </defs>
+    </svg>
+    <header class="top">
+      <a href="/" class="brand" aria-label="קרוב, מסך הבית"
+        ><img src="icon.svg" width="34" height="34" alt="" /><strong
+          >קרוב<span>KAROV</span></strong
+        ></a
+      ><span class="workspace-label">מרכז השליטה</span
+      ><span id="network" class="connection-label">מוכנים לעזור</span>
+    </header>
+    <main>
+      <section id="home" class="home">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">הכול מחובר.</p>
+            <h1>המסכים שלי</h1>
+            <p class="subtitle">הטלוויזיה של המשפחה, במרחק לחיצה.</p>
+          </div>
+          <button id="add-device" class="primary">＋ חיבור מכשיר</button>
+        </div>
+        <div class="home-grid">
+          <section class="device-panel" aria-label="מכשירים שמורים">
+            <div class="panel-heading">
+              <span>מכשירים</span><span class="mono">ANDROID TV</span>
+            </div>
+            <div id="devices" class="devices"></div>
+            <div id="empty" class="empty">
+              <div class="tv-illustration" aria-hidden="true">
+                <div class="tv-display">
+                  <svg><use href="#i-tv" /></svg><span>מוכנים להתחבר</span><i></i>
+                </div>
+                <div class="tv-stand"></div>
+              </div>
+              <h2>נוסיף את הטלוויזיה הראשונה</h2>
+              <p>פותחים את ״קרוב״ בסטרימר וסורקים את קוד הזיווג בטלפון שלך.</p>
+              <span class="empty-step">הגדרה אחת. אחר כך פשוט מתחברים.</span>
+            </div>
+          </section>
+          <aside class="setup-panel">
+            <div class="section-number">01 / SETUP</div>
+            <h2>חיבור חדש</h2>
+            <p>הזיווג נותן למכשיר שלך גישה למסך ולשלט. אפשר לצרף גם את המחשב.</p>
+            <details id="pair-details">
+              <summary>הזנת קישור זיווג <span aria-hidden="true">↗</span></summary>
+              <form id="pair-form">
+                <label for="pair-link">קישור מהאפליקציה בטלוויזיה</label
+                ><textarea
+                  id="pair-link"
+                  dir="ltr"
+                  rows="2"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                  placeholder="https://…/#pair=…"
+                ></textarea
+                ><label for="controller-name">שם המכשיר שלך</label
+                ><input
+                  id="controller-name"
+                  maxlength="40"
+                  value="המכשיר שלי"
+                  autocomplete="off"
+                /><button class="primary" type="submit">
+                  חיבור ושמירה <span aria-hidden="true">←</span>
+                </button>
+              </form>
+            </details>
+            <div class="privacy">
+              <svg class="icon"><use href="#i-lock" /></svg>
+              <div>
+                <strong>גישה אישית, חיבור מוצפן</strong>
+                <p>רק המכשירים שזיווגת יכולים לשלוט. ביטול גישה זמין בכל רגע בטלוויזיה.</p>
+              </div>
+            </div>
+            <p><a href="/setup.html">הורדה והכנה ראשונית של הטלוויזיה ←</a></p>
+          </aside>
+        </div>
+      </section>
+      <section id="session" hidden>
+        <div class="session-heading">
+          <div>
+            <p class="eyebrow">REMOTE SESSION</p>
+            <h1 id="tv-name">הטלוויזיה</h1>
+          </div>
+          <button id="disconnect" class="quiet">סיום עזרה <span aria-hidden="true">↗</span></button>
+        </div>
+        <div class="workspace">
+          <div class="screen-column">
+            <div class="section-label">
+              <span>המסך בטלוויזיה</span><span class="mono">LIVE VIEW</span>
+            </div>
+            <div class="screen" id="screen">
+              <img id="frame" alt="מסך הסטרימר בזמן העזרה" hidden />
+              <div id="screen-message" class="screen-message" role="status">
+                מחכים לתמונה הראשונה…
+              </div>
+              <div class="screen-caption">
+                <span id="frame-status">מתחבר</span
+                ><button id="fullscreen" class="screen-button" aria-label="מסך מלא">
+                  <svg class="icon"><use href="#i-expand" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="screen-tools">
+              <label
+                >קצב תמונה
+                <select id="quality">
+                  <option value="500">רגיל</option>
+                  <option value="1000">חיסכון ברשת</option>
+                  <option value="350">מהיר</option>
+                </select></label
+              ><button id="pause-screen" class="quiet" aria-pressed="false">השהיית תמונה</button
+              ><button id="capture-permission" class="quiet" hidden>בקשת שיתוף בטלוויזיה</button>
+            </div>
+            <p id="capability-note" class="hint"></p>
+            <section class="apps-section">
+              <div class="section-label">
+                <h2>האפליקציות בטלוויזיה</h2>
+                <span class="mono">QUICK LAUNCH</span>
+              </div>
+              <div id="apps" class="apps"></div>
+            </section>
+          </div>
+          <aside class="remote" aria-label="שלט הטלוויזיה">
+            <div class="section-label">
+              <h2>השלט שלך</h2>
+              <span class="remote-dot" aria-hidden="true"></span>
+            </div>
+            <div class="remote-top">
+              <button data-key="HOME" aria-label="בית">
+                <svg class="icon"><use href="#i-home" /></svg><span>בית</span></button
+              ><button data-key="BACK" aria-label="חזרה">
+                <svg class="icon"><use href="#i-back" /></svg><span>חזרה</span></button
+              ><button data-key="SETTINGS" aria-label="הגדרות">
+                <svg class="icon"><use href="#i-settings" /></svg><span>הגדרות</span>
+              </button>
+            </div>
+            <div class="dpad" dir="ltr">
+              <button data-key="UP" class="up" aria-label="למעלה">
+                <svg class="icon"><use href="#i-chevron" /></svg></button
+              ><button data-key="LEFT" class="left" aria-label="שמאלה">
+                <svg class="icon"><use href="#i-chevron" /></svg></button
+              ><button data-key="OK" class="ok" aria-label="אישור">OK</button
+              ><button data-key="RIGHT" class="right" aria-label="ימינה">
+                <svg class="icon"><use href="#i-chevron" /></svg></button
+              ><button data-key="DOWN" class="down" aria-label="למטה">
+                <svg class="icon"><use href="#i-chevron" /></svg>
+              </button>
+            </div>
+            <div class="media volume" dir="ltr">
+              <button data-key="VOLUME_DOWN" aria-label="הנמכת קול">−</button
+              ><button data-key="MUTE" aria-label="השתקה">
+                <svg class="icon"><use href="#i-volume" /></svg></button
+              ><button data-key="VOLUME_UP" aria-label="הגברת קול">+</button>
+            </div>
+            <div class="media playback" dir="ltr">
+              <button data-key="REWIND" aria-label="הרצה לאחור">
+                <svg class="icon rewind"><use href="#i-forward" /></svg></button
+              ><button data-key="PLAY_PAUSE" aria-label="ניגון או השהיה">
+                <svg class="icon"><use href="#i-play" /></svg></button
+              ><button data-key="FAST_FORWARD" aria-label="הרצה קדימה">
+                <svg class="icon"><use href="#i-forward" /></svg>
+              </button>
+            </div>
+            <form id="text-form">
+              <label for="remote-text">מקלדת</label>
+              <div class="text-entry">
+                <input
+                  id="remote-text"
+                  maxlength="1000"
+                  autocomplete="off"
+                  placeholder="חיפוש סרט או סדרה…"
+                /><button type="submit" aria-label="שליחת טקסט">←</button>
+              </div>
+              <p class="hint">פתחו קודם שדה חיפוש בטלוויזיה.</p>
+            </form>
+            <details>
+              <summary>שליטה נוספת לדגמים ישנים</summary>
+              <p class="hint">
+                אם החצים אינם עובדים, אפשר לחבר ניפוי שגיאות מקומי. מפעילים מראש ניפוי שגיאות ברשת
+                בסטרימר, ואז מאשרים בטלוויזיה את המפתח של קרוב ובוחרים באישור קבוע.
+              </p>
+              <button id="adb-enable" class="quiet">חיבור שליטה נוספת</button
+              ><button id="adb-disable" class="quiet">כיבוי השליטה הנוספת</button
+              ><button id="adb-status" class="quiet">בדיקת חיבור</button>
+              <p id="android-remote-status" class="hint"></p>
+            </details>
+            <details>
+              <summary>גישה ומכשירים</summary>
+              <div id="controllers"></div>
+              <button id="refresh-controllers" class="quiet">רענון מכשירים מורשים</button
+              ><button id="forget" class="danger">ביטול הגישה של המכשיר הזה</button>
+            </details>
+          </aside>
+        </div>
+      </section>
+      <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
+    </main>
+    <footer><span>קרוב. גם מרחוק.</span><span class="mono">FAMILY REMOTE / 1.0</span></footer>
+    <dialog id="confirm-dialog">
+      <form method="dialog">
+        <h2 id="confirm-title">אישור פעולה</h2>
+        <p id="confirm-text"></p>
+        <div class="dialog-actions">
+          <button value="cancel" autofocus>ביטול</button
+          ><button value="ok" class="danger">אישור</button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>

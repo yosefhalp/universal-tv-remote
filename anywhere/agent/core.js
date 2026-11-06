@@ -35,10 +35,25 @@
   }
 
   Agent.prototype.start = function () {
+    if (this.running) return;
+    this.running = true;
     var self = this;
     this._refreshCodes();
     this._connect();
-    setInterval(function () { self._checkWeek(); }, 60000);
+    this.weekTimer = setInterval(function () { self._checkWeek(); }, 60000);
+  };
+
+  // עצירה מפורשת מונעת חיבור מחדש ומשחררת את כל הטיימרים גם כשהרשת כבר נותקה.
+  Agent.prototype.stop = function () {
+    this.running = false;
+    clearInterval(this.weekTimer);
+    clearInterval(this.pingTimer);
+    clearTimeout(this.reconnectTimer);
+    this._endPeer();
+    var ws = this.ws;
+    this.ws = null;
+    if (ws) { ws.onclose = null; ws.onmessage = null; ws.onopen = null; ws.close(); }
+    this._setStatus('offline');
   };
 
   Agent.prototype._rotation = function () {
@@ -85,6 +100,7 @@
   };
 
   Agent.prototype._connect = function () {
+    if (!this.running) return;
     var self = this;
     var ws;
     this._setStatus('connecting');
@@ -96,14 +112,15 @@
     }
     this.ws = ws;
     ws.onopen = function () {
+      if (!self.running || self.ws !== ws) { ws.close(); return; }
       self.reconnectMs = 2000;
       self._setStatus('online');
       self.pingTimer = setInterval(function () { if (ws.readyState === 1) ws.send('ping'); }, PING_MS);
     };
-    ws.onmessage = function (event) { self._onMessage(event.data); };
+    ws.onmessage = function (event) { if (self.running && self.ws === ws) self._onMessage(event.data); };
     ws.onclose = function () {
-      clearInterval(self.pingTimer);
       if (self.ws !== ws) return;
+      clearInterval(self.pingTimer);
       self.ws = null;
       self._endPeer();
       self._scheduleReconnect();
@@ -112,9 +129,11 @@
   };
 
   Agent.prototype._scheduleReconnect = function () {
+    if (!this.running) return;
     var self = this;
     this._setStatus('offline');
-    setTimeout(function () { self._connect(); }, this.reconnectMs);
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(function () { self._connect(); }, this.reconnectMs);
     this.reconnectMs = Math.min(this.reconnectMs * 2, RECONNECT_MAX_MS);
   };
 
