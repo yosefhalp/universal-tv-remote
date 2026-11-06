@@ -162,12 +162,13 @@ async function connectDevice(device, retry = false) {
       setControls(false);
       clearFrame('החיבור נותק — התמונה אינה עדכנית');
       status('מנותק');
-      if (
-        !['DENIED', 'EXPIRED', 'BAD_IDENTITY', 'BLOCKED', 'BUSY'].includes(reason) &&
-        selected &&
-        !document.hidden &&
-        navigator.onLine
-      ) {
+      // שחרור החלון הקודם עשוי להגיע לשרת רגע אחרי החיבור החדש. ממתינים בקצרה,
+      // בלי לנתק בקר אחר שעדיין פעיל ובלי לנסות ללא סוף כשהטלוויזיה תפוסה.
+      const retryable =
+        reason === 'BUSY'
+          ? reconnects < 3
+          : !['DENIED', 'EXPIRED', 'BAD_IDENTITY', 'BLOCKED'].includes(reason);
+      if (retryable && selected && !document.hidden && navigator.onLine) {
         reconnectTimer = setTimeout(
           () => connectDevice(device, true),
           Math.min(1000 * 2 ** reconnects++, 15000),
@@ -215,7 +216,7 @@ async function connectDevice(device, retry = false) {
     notice(explain(error));
     status('לא מחובר');
     setControls(false);
-    if (['DENIED', 'EXPIRED', 'BAD_IDENTITY', 'BLOCKED', 'BUSY'].includes(error.message))
+    if (['DENIED', 'EXPIRED', 'BAD_IDENTITY', 'BLOCKED'].includes(error.message))
       clearTimeout(reconnectTimer);
   }
 }
@@ -507,4 +508,4 @@ try {
   notice(messages[error.message] || error.message);
 }
 if ('serviceWorker' in navigator && location.protocol === 'https:')
-  navigator.serviceWorker.register('/sw.js?v=4').catch(() => {});
+  navigator.serviceWorker.register('/sw.js?v=5').catch(() => {});
