@@ -2,22 +2,22 @@
   "schema": 1,
   "tv": {
     "applicationId": "org.yosef.karov",
-    "versionCode": 10,
-    "versionName": "1.2.2",
+    "versionCode": 11,
+    "versionName": "1.3.0",
     "minSdk": 28,
-    "bytes": 9159618,
-    "sha256": "8842bac5f3ad104fe068aa2c41b016127310db6fc0c6f1f7fc0e40106884b152",
-    "path": "karov-tv-1.2.2.apk",
-    "notes": "עדכונים אוטומטיים עם מעבר למתקין Android אם החיבור המקומי נכשל. הזיווגים נשמרים."
+    "bytes": 9169070,
+    "sha256": "e85b6e267fa175d953efbc02ee8fcefdeb6248f3e341d410dd898a040fc79403",
+    "path": "karov-tv-1.3.0.apk",
+    "notes": "שלט בסמלים במסך אחד, מגע ישיר ומשטח מגע, גרירה וגלילה. כפתורי ניגון קבועים גם כשהתמונה מוגנת."
   },
   "phone": {
     "applicationId": "org.yosef.karov.phone",
-    "versionCode": 7,
-    "versionName": "1.2.2",
+    "versionCode": 9,
+    "versionName": "1.3.0",
     "minSdk": 28,
-    "bytes": 12074501,
-    "sha256": "a8c3ec7c51b4e3b9975d668742141f8f2cac03886e55f0130b59f9b75ee431f0",
-    "path": "karov-phone-1.2.2.apk",
-    "notes": "עדכונים אוטומטיים עם מעבר למתקין Android אם החיבור המקומי נכשל. הזיווגים נשמרים."
+    "bytes": 12098029,
+    "sha256": "a07e8b6c2c6c31af80c39af8a33a25f2e711338682e86f0d9889e381cfd1ddaa",
+    "path": "karov-phone-1.3.0.apk",
+    "notes": "שלט בסמלים במסך אחד, מגע ישיר ומשטח מגע, גרירה וגלילה. כפתורי ניגון קבועים גם כשהתמונה מוגנת."
   }
 }

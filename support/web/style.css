@@ -7,7 +7,7 @@
   --ink: #f3f3f5;
   --muted: #9a9ca7;
   --accent: #ff784e;
-  --font: 'Segoe UI', Arial, sans-serif;
+  --font: "Segoe UI", Arial, sans-serif;
   font-family: var(--font);
   background: var(--bg);
   color: var(--ink);
@@ -128,7 +128,7 @@ a {
   color: #afb1ba;
 }
 .connection-label:before {
-  content: '';
+  content: "";
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -312,7 +312,7 @@ h2 {
   position: relative;
 }
 .tv-stand:before {
-  content: '';
+  content: "";
   position: absolute;
   right: 30px;
   width: 7px;
@@ -419,7 +419,7 @@ textarea {
   padding: 28px 0;
 }
 .device:before {
-  content: 'TV';
+  content: "TV";
   display: grid;
   place-items: center;
   width: 52px;
@@ -1084,4 +1084,50 @@ dialog p {
   button:active {
     transform: none;
   }
+}
+
+/* הסמן שייך לבקר ואינו חוסם את התמונה או את כפתור המסך המלא. */
+#pointer-cursor {
+  position: absolute;
+  width: 24px;
+  height: 30px;
+  pointer-events: none;
+  z-index: 2;
+  overflow: visible;
+}
+#pointer-cursor path {
+  fill: #fff;
+  stroke: #08090c;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+#pointer-cursor.dragging path {
+  fill: var(--accent, #ff784e);
+}
+.screen.pointer-ready {
+  touch-action: none;
+  cursor: none;
+  user-select: none;
+}
+.pointer-tools {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.pointer-tools button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #343640;
+  background: #1f2127;
+  color: #fff;
+  border-radius: 10px;
+}
+.pointer-tools button[aria-pressed="true"] {
+  background: #a64325;
+  border-color: #ff784e;
+}
+#pointer-hint {
+  margin: 10px 0;
+  font-size: 12px;
 }

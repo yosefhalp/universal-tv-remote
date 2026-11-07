@@ -2,8 +2,30 @@ import { Connection } from './connection.mjs';
 import { decodePairing, importSecret, randomId, randomSecret, validId } from './protocol.mjs';
 import { savedDevices, saveDevice, forgetDevice } from './store.mjs';
 import { normalizeCode } from './srp.mjs';
+import { PointerSurface } from './pointer.mjs';
 
 const $ = (id) => document.getElementById(id);
+let pointerSupported = false;
+const pointer = new PointerSurface({
+  surface: $('screen'),
+  image: $('frame'),
+  cursor: $('pointer-cursor'),
+  direct: $('pointer-direct'),
+  pad: $('pointer-pad'),
+  drag: $('pointer-drag'),
+  click: $('pointer-click'),
+  up: $('pointer-up'),
+  down: $('pointer-down'),
+  hint: $('pointer-hint'),
+  enabled: () =>
+    !!connection?.ready &&
+    pointerSupported &&
+    !paused &&
+    lastFrame > 0 &&
+    Date.now() - lastFrame < 4000 &&
+    !document.hidden,
+  send: (args) => action('pointer', args),
+});
 let connection,
   selected,
   frameTimer,
@@ -15,6 +37,11 @@ let connection,
 let expectedClose = false,
   pendingPair;
 const messages = {
+  POINTER_BUSY: 'המחווה הקודמת מסתיימת. אפשר לנסות שוב בעוד רגע.',
+  POINTER_CANCELLED: 'Android הפסיק את המחווה. אפשר לנסות שוב.',
+  STALE_GEOMETRY: 'המסך שינה כיוון או גודל. המתינו לתמונה החדשה.',
+  NO_POINTER: 'יש להשלים את הרשאת הנגישות או את השליטה הנוספת בסטרימר.',
+  BAD_POINTER: 'לא ניתן למפות את המיקום למסך הטלוויזיה.',
   OFFLINE: 'הסטרימר אינו מחובר כרגע. בדקו שהוא דלוק ומחובר לאינטרנט.',
   BUSY: 'מכשיר אחר כבר עוזר בטלוויזיה. סיימו שם את העזרה ונסו שוב.',
   DENIED: 'הגישה בוטלה או שקוד הזיווג אינו תקף. פתחו זיווג חדש בטלוויזיה.',
@@ -35,6 +62,7 @@ const messages = {
   NO_ACCESSIBILITY: 'יש להפעיל את שירות הנגישות של ״קרוב״ בהגדרות הסטרימר.',
   CAPTURE_PERMISSION: 'נדרש אישור שיתוף מסך בטלוויזיה. לחצו על בקשת שיתוף.',
   SECURE_CONTENT: 'האפליקציה בטלוויזיה מגינה על צילום המסך. אפשר להמשיך להשתמש בשלט.',
+  CAPTURE_FAILED: 'התמונה אינה זמינה כרגע. כפתורי השלט והניגון זמינים.',
   CAPTURE_BUSY: 'ממתינים לעדכון התמונה…',
   NO_TEXT_FIELD: 'לא נמצא שדה כתיבה פתוח בטלוויזיה. פתחו קודם שדה חיפוש.',
   UNSUPPORTED: 'הפעולה אינה זמינה במסך או בדגם הזה.',
@@ -58,6 +86,9 @@ function status(text, live = false) {
   $('network').classList.toggle('live', live);
 }
 function clearFrame(text) {
+  // חוזרים לשלט כשצילום נעלם, כדי להשאיר את כפתורי הניגון זמינים גם בתוכן מוגן.
+  if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  pointer.clear();
   $('frame').hidden = true;
   $('frame').removeAttribute('src');
   $('screen-message').hidden = false;
@@ -203,6 +234,7 @@ async function connectDevice(device, retry = false) {
         ? 'בגרסה זו מומלץ להגדיר שליטה נוספת דרך ניפוי שגיאות מקומי כדי לאפשר חצים בכל האפליקציות.'
         : 'אפשר להשתמש גם בחיצי המקלדת, Enter ו־Escape. התמונה מיועדת לעזרה ולניווט.';
     $('capture-permission').hidden = info.captureMode !== 'permission';
+    pointerSupported = info.pointer === true;
     $('android-remote-status').textContent = info.remoteStatus || '';
     if (paused) clearFrame('התמונה מושהית');
     else if (info.firstFrame && !document.hidden) {
@@ -271,6 +303,8 @@ function showFrame(frame, elapsed) {
   $('frame').hidden = false;
   $('screen-message').hidden = true;
   lastFrame = Date.now();
+  pointer.frame(frame);
+  $('frame').onload = () => pointer.render();
   $('frame-status').textContent =
     elapsed === undefined ? 'תמונה מעודכנת' : `תמונה מעודכנת · ${elapsed} אלפיות שנייה`;
   $('capture-permission').hidden = true;

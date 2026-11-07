@@ -157,7 +157,8 @@ public final class TvAccessibilityService extends AccessibilityService {
                                                     result.getColorSpace());
                                     if (hardware == null) throw new Exception("CAPTURE_FAILED");
                                     software = hardware.copy(Bitmap.Config.ARGB_8888, false);
-                                    callback.done(frame(software), null);
+                                    callback.done(
+                                            frame(software, TvAccessibilityService.this), null);
                                 } catch (Exception error) {
                                     callback.done(null, "CAPTURE_FAILED");
                                 } finally {
@@ -186,20 +187,23 @@ public final class TvAccessibilityService extends AccessibilityService {
                 });
     }
 
-    public static JSONObject frame(Bitmap bitmap) throws Exception {
+    public static JSONObject frame(Bitmap bitmap, android.content.Context context)
+            throws Exception {
         int width = Math.min(1280, bitmap.getWidth()),
                 height = Math.max(1, bitmap.getHeight() * width / bitmap.getWidth());
         Bitmap scaled = Bitmap.createScaledBitmap(bitmap, width, height, true);
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             scaled.compress(Bitmap.CompressFormat.JPEG, 65, out);
-            return new JSONObject()
-                    .put(
-                            "jpeg",
-                            android.util.Base64.encodeToString(
-                                    out.toByteArray(), android.util.Base64.NO_WRAP))
-                    .put("width", width)
-                    .put("height", height);
+            return PointerActions.geometry(
+                    context,
+                    new JSONObject()
+                            .put(
+                                    "jpeg",
+                                    android.util.Base64.encodeToString(
+                                            out.toByteArray(), android.util.Base64.NO_WRAP))
+                            .put("width", width)
+                            .put("height", height));
         } finally {
             if (scaled != bitmap) scaled.recycle();
         }

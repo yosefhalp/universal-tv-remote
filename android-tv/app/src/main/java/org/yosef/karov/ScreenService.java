@@ -142,7 +142,7 @@ public final class ScreenService extends Service {
             try {
                 padded.copyPixelsFromBuffer(buffer);
                 cropped = Bitmap.createBitmap(padded, 0, 0, width, height);
-                JSONObject frame = TvAccessibilityService.frame(cropped);
+                JSONObject frame = TvAccessibilityService.frame(cropped, this);
                 if (projection != null) {
                     latest = frame;
                     latestAt = SystemClock.elapsedRealtime();

@@ -215,7 +215,7 @@ public final class LocalAdb {
                     Bitmap bitmap = BitmapFactory.decodeByteArray(result, 0, result.length);
                     if (bitmap == null) throw new IOException("CAPTURE_FAILED");
                     try {
-                        callback.done(TvAccessibilityService.frame(bitmap), null);
+                        callback.done(TvAccessibilityService.frame(bitmap, context), null);
                     } finally {
                         bitmap.recycle();
                     }
@@ -254,6 +254,30 @@ public final class LocalAdb {
 
     public void capture(BooleanSupplier sessionCurrent, DeviceActions.Result callback) {
         command("screencap -p", 12582912, sessionCurrent, callback, true);
+    }
+
+    public void pointer(PointerSpec spec, BooleanSupplier current, DeviceActions.Result callback) {
+        float[][] path = spec.path();
+        int x = Math.round(path[0][0] * (spec.width - 1));
+        int y = Math.round(path[0][1] * (spec.height - 1));
+        String input = "input touchscreen ";
+        if (spec.kind.equals("tap") && spec.duration < 500) input += "tap " + x + " " + y;
+        else {
+            float[] end = path[path.length - 1];
+            input +=
+                    "swipe "
+                            + x
+                            + " "
+                            + y
+                            + " "
+                            + Math.round(end[0] * (spec.width - 1))
+                            + " "
+                            + Math.round(end[1] * (spec.height - 1))
+                            + " "
+                            + spec.duration;
+        }
+        // רק מספרים שנבדקו ופקודה קבועה; חלופת ADB מבצעת גרירה ישרה בין נקודות הקצה.
+        command(input, 16384, current, callback, false);
     }
 
     private byte[] execute(Socket active, String command, int limit) throws Exception {

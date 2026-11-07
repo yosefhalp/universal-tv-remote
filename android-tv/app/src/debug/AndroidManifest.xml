@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic">
         <activity android:name=".InputProbeActivity" android:exported="true" />
+        <activity android:name=".PointerProbeActivity" android:exported="true" />
+        <activity android:name=".PlaybackProbeActivity" android:exported="true" />
     </application>
 </manifest>

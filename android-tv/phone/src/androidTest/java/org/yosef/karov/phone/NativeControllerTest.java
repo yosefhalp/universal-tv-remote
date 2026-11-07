@@ -35,7 +35,7 @@ public final class NativeControllerTest {
             }
         }
         assertTrue("הזיווג השמור חייב להתחבר לפני בדיקת הכתיבה", ready);
-        onView(withText("כתיבה בטלוויזיה")).perform(scrollTo(), click());
+        onView(withContentDescription("כתיבה בטלוויזיה")).perform(click());
         onView(withHint("מה לחפש בטלוויזיה?"))
                 .perform(replaceText("שלום מהאפליקציה הנייטיבית"), closeSoftKeyboard());
         onView(withText("שליחת טקסט")).perform(click());

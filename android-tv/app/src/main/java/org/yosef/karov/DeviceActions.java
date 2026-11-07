@@ -17,10 +17,12 @@ public final class DeviceActions {
     }
 
     private final Context context;
+    private final PointerActions pointer;
     private final Handler main = new Handler(Looper.getMainLooper());
 
     public DeviceActions(Context context) {
         this.context = context.getApplicationContext();
+        pointer = new PointerActions(this.context);
     }
 
     public JSONObject info() throws Exception {
@@ -36,6 +38,7 @@ public final class DeviceActions {
                 .put("model", Build.MODEL)
                 .put("sdk", Build.VERSION.SDK_INT)
                 .put("localAdb", adb.ready())
+                .put("pointer", TvAccessibilityService.instance != null || adb.ready())
                 .put("remoteStatus", adb.status())
                 .put("accessibility", TvAccessibilityService.instance != null)
                 .put("captureMode", captureMode)
@@ -44,6 +47,7 @@ public final class DeviceActions {
 
     public void active(boolean active) {
         main.post(() -> {
+            if (!active) pointer.disconnected();
             WakeActivity.session(context, active);
             if (TvAccessibilityService.instance != null)
                 TvAccessibilityService.instance.showActive(active);
@@ -61,6 +65,7 @@ public final class DeviceActions {
                 LocalAdb remote = LocalAdb.get(context);
                 switch (method) {
                     case "info" -> callback.done(info(), null);
+                    case "pointer" -> pointer.execute(args, current, callback);
                     case "updateInfo" ->
                             callback.done(
                                     org.yosef.karov.updates.UpdateEngine.get(context).info(), null);
@@ -139,7 +144,11 @@ public final class DeviceActions {
                 }
             } catch (Exception error) {
                 callback.done(
-                        null, "UNSUPPORTED".equals(error.getMessage()) ? "UNSUPPORTED" : "FAILED");
+                        null,
+                        java.util.Set.of("UNSUPPORTED", "BAD_POINTER")
+                                        .contains(String.valueOf(error.getMessage()))
+                                ? error.getMessage()
+                                : "FAILED");
             }
         });
     }

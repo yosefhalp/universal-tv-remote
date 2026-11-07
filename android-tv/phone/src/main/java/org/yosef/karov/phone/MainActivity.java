@@ -31,11 +31,11 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public final class MainActivity extends ComponentActivity {
-    private static final int BG = Color.rgb(20, 21, 25),
-            PANEL = Color.rgb(31, 33, 39),
+    private static final int BG = Color.rgb(13, 16, 22),
+            PANEL = Color.rgb(25, 30, 40),
             LINE = Color.rgb(56, 59, 68),
             MUTED = Color.rgb(178, 182, 192),
-            ACCENT = Color.rgb(255, 120, 78);
+            ACCENT = Color.rgb(108, 169, 255);
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService tasks = Executors.newSingleThreadExecutor();
     private final ArrayList<View> controls = new ArrayList<>();
@@ -45,8 +45,10 @@ public final class MainActivity extends ComponentActivity {
     private volatile RemoteClient pairingConnection;
     private LinearLayout content;
     private TextView status, screenMessage;
-    private ImageView screen, fullScreen;
-    private Button pause;
+    private PointerSurface screen, fullScreen;
+    private JSONObject frameMetadata;
+    private boolean pointerSupported, pointerBusy, relativeMode, dragArmed;
+    private ImageButton directModeButton, padModeButton, dragButton;
     private Dialog fullDialog;
     private Bitmap frame;
     private volatile boolean resumed, destroyed;
@@ -86,6 +88,7 @@ public final class MainActivity extends ComponentActivity {
         super.onCreate(state);
         try {
             vault = new PhoneVault(this);
+            relativeMode = getPreferences(MODE_PRIVATE).getBoolean("pointerRelative", false);
             selected = vault.get(vault.last());
             render();
         } catch (Exception error) {
@@ -209,7 +212,7 @@ public final class MainActivity extends ComponentActivity {
         row.addView(view, params);
     }
 
-    private void control(Button button) {
+    private void control(View button) {
         controls.add(button);
         button.setEnabled(connected);
         button.setAlpha(connected ? 1 : 0.4f);
@@ -217,6 +220,10 @@ public final class MainActivity extends ComponentActivity {
 
     private void render() {
         if (vault == null || destroyed) return;
+        if (selected != null) {
+            renderCompact();
+            return;
+        }
         controls.clear();
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -257,7 +264,6 @@ public final class MainActivity extends ComponentActivity {
                     return insets;
                 });
         if (selected == null) renderHome();
-        else renderRemote();
     }
 
     private void renderHome() {
@@ -327,131 +333,341 @@ public final class MainActivity extends ComponentActivity {
         add(status, 22);
     }
 
-    private void renderRemote() {
-        add(text(selected.optString("name", "הטלוויזיה"), 27, Color.WHITE), 3);
-        status = text(connected ? "● מחוברים לטלוויזיה" : "מתחברים לטלוויזיה…", 13, MUTED);
-        add(status, 7);
+    private ImageButton icon(String name, String label, Runnable action) {
+        ImageButton button = new ImageButton(this);
+        button.setImageDrawable(new RemoteIcon(name, Color.WHITE));
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setPadding(dp(12), dp(12), dp(12), dp(12));
+        button.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            int inset = Math.max(dp(4), (Math.min(r - l, b - t) - dp(24)) / 2);
+            if (v.getPaddingLeft() != inset) v.setPadding(inset, inset, inset, inset);
+        });
+        button.setContentDescription(label);
+        button.setTooltipText(label);
+        button.setBackground(touchSurface(PANEL, 14));
+        button.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            action.run();
+        });
+        return button;
+    }
+
+    private void iconCell(LinearLayout row, View button, int height) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(height), 1);
+        params.setMargins(dp(2), dp(2), dp(2), dp(2));
+        row.addView(button, params);
+    }
+
+    private void renderCompact() {
+        controls.clear();
+        boolean landscape =
+                getResources().getConfiguration().orientation
+                        == Configuration.ORIENTATION_LANDSCAPE;
+        int unit =
+                landscape ? (getResources().getConfiguration().screenHeightDp < 360 ? 36 : 40) : 48;
+        int headerHeight = landscape ? 36 : 44;
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(BG);
+        root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        LinearLayout header = row();
+        header.setPadding(dp(12), dp(4), dp(12), 0);
+        ImageButton exit = icon("close", "סיום עזרה", this::home);
+        exit.setBackground(touchSurface(BG, 24));
+        header.addView(exit, new LinearLayout.LayoutParams(dp(44), dp(headerHeight)));
+        TextView title =
+                text(selected.optString("name", "הטלוויזיה"), landscape ? 15 : 18, Color.WHITE);
+        title.setGravity(Gravity.CENTER);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        status =
+                text(
+                        connected ? "● מחוברים לטלוויזיה" : "מתחברים לטלוויזיה…",
+                        landscape ? 10 : 12,
+                        connected ? Color.rgb(133, 209, 175) : MUTED);
+        status.setGravity(Gravity.CENTER);
+        status.setSingleLine(true);
+        status.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        if (landscape) {
+            LinearLayout caption = new LinearLayout(this);
+            caption.setOrientation(LinearLayout.VERTICAL);
+            caption.addView(title, new LinearLayout.LayoutParams(-1, dp(21)));
+            caption.addView(status, new LinearLayout.LayoutParams(-1, dp(15)));
+            header.addView(caption, new LinearLayout.LayoutParams(0, dp(headerHeight), 1));
+        } else header.addView(title, new LinearLayout.LayoutParams(0, dp(headerHeight), 1));
+        ImageButton more = icon("more", "אפשרויות", this::options);
+        more.setBackground(touchSurface(BG, 24));
+        header.addView(more, new LinearLayout.LayoutParams(dp(44), dp(headerHeight)));
+        root.addView(header);
+        if (!landscape) root.addView(status, new LinearLayout.LayoutParams(-1, dp(22)));
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(landscape ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        body.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        body.setPadding(dp(12), dp(6), dp(12), dp(10));
+        root.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
         FrameLayout picture = new FrameLayout(this);
         picture.setBackground(shape(Color.BLACK, 18));
         picture.setClipToOutline(true);
-        screen = new ImageView(this);
-        screen.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        screen.setContentDescription("מסך הסטרימר בזמן העזרה");
+        PointerSurface previousScreen = screen;
+        screen = new PointerSurface(this, this::pointerRequest);
+        if (frame != null) screen.copyPositionFrom(previousScreen);
         picture.addView(screen, new FrameLayout.LayoutParams(-1, -1));
-        screenMessage = text("ממתינים לתמונה…", 15, MUTED);
+        screenMessage = text("ממתינים לתמונה…", 14, MUTED);
         screenMessage.setGravity(Gravity.CENTER);
-        screenMessage.setPadding(dp(16), dp(10), dp(16), dp(10));
+        screenMessage.setPadding(dp(12), 0, dp(12), 0);
         picture.addView(screenMessage, new FrameLayout.LayoutParams(-1, -1));
-        int width = getResources().getDisplayMetrics().widthPixels - dp(44);
         LinearLayout.LayoutParams pictureSize =
-                new LinearLayout.LayoutParams(
-                        -1, Math.min(dp(300), Math.max(dp(174), width * 9 / 16)));
-        pictureSize.topMargin = dp(22);
-        content.addView(picture, pictureSize);
-        picture.setOnClickListener(v -> fullscreen());
-        if (frame != null && !paused) {
-            screen.setImageBitmap(frame);
-            screenMessage.setVisibility(View.GONE);
-        }
-        LinearLayout imageActions = row();
-        pause =
-                button(
-                        paused ? "חידוש תמונה" : "השהיית תמונה",
-                        false,
+                landscape
+                        ? new LinearLayout.LayoutParams(0, -1, 1)
+                        : new LinearLayout.LayoutParams(-1, dp(180));
+        LinearLayout viewer = new LinearLayout(this);
+        viewer.setOrientation(LinearLayout.VERTICAL);
+        viewer.addView(
+                picture,
+                landscape
+                        ? new LinearLayout.LayoutParams(-1, 0, 1)
+                        : new LinearLayout.LayoutParams(-1, -1));
+        body.addView(viewer, pictureSize);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        body.addView(
+                panel,
+                landscape
+                        ? new LinearLayout.LayoutParams(dp(290), -1)
+                        : new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout modes = row();
+        modes.setPadding(0, dp(6), 0, dp(4));
+        directModeButton = icon("touch", "מגע ישיר", () -> pointerMode(false));
+        padModeButton = icon("pad", "משטח מגע", () -> pointerMode(true));
+        dragButton =
+                icon(
+                        "drag",
+                        "גרירה במשטח המגע",
                         () -> {
-                            paused = !paused;
-                            pause.setText(paused ? "חידוש תמונה" : "השהיית תמונה");
-                            clearFrame(paused ? "התמונה מושהית" : "מחדשים תמונה…");
-                            if (!paused) capture(connection);
+                            dragArmed = !dragArmed;
+                            refreshPointerMode();
                         });
-        control(pause);
-        cell(imageActions, pause);
-        Button expand = button("מסך מלא", false, this::fullscreen);
-        control(expand);
-        cell(imageActions, expand);
-        add(imageActions, 12);
-        LinearLayout navigation = row();
-        for (String[] key :
-                new String[][] {{"בית", "HOME"}, {"חזרה", "BACK"}, {"הגדרות", "SETTINGS"}}) {
-            Button b = button(key[0], false, () -> key(key[1]));
-            control(b);
-            cell(navigation, b);
+        for (View v :
+                new View[] {
+                    directModeButton,
+                    padModeButton,
+                    icon("click", "לחיצה במקום הסמן", () -> screen.clickPointer()),
+                    dragButton,
+                    icon("expand", "מסך מלא", this::fullscreen)
+                }) {
+            control(v);
+            iconCell(modes, v, unit);
         }
-        add(navigation, 23);
+        panel.addView(modes);
+        LinearLayout middle = row();
+        middle.setGravity(Gravity.CENTER);
+        middle.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        LinearLayout sound = new LinearLayout(this);
+        sound.setOrientation(LinearLayout.VERTICAL);
+        sound.setGravity(Gravity.CENTER);
+        sound.setBackground(shape(PANEL, 25));
+        for (String[] a :
+                new String[][] {
+                    {"plus", "הגברת קול", "VOLUME_UP"},
+                    {"mute", "השתקה", "MUTE"},
+                    {"minus", "הנמכת קול", "VOLUME_DOWN"}
+                }) {
+            ImageButton v = icon(a[0], a[1], () -> key(a[2]));
+            v.setBackground(touchSurface(Color.TRANSPARENT, 24));
+            control(v);
+            sound.addView(v, new LinearLayout.LayoutParams(dp(unit), dp(unit)));
+        }
+        middle.addView(sound, new LinearLayout.LayoutParams(dp(unit), -2));
         LinearLayout pad = new LinearLayout(this);
         pad.setOrientation(LinearLayout.VERTICAL);
         pad.setGravity(Gravity.CENTER);
-        pad.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        pad.setPadding(dp(20), dp(16), dp(20), dp(16));
-        pad.setBackground(shape(PANEL, 100));
-        LinearLayout.LayoutParams padSize = new LinearLayout.LayoutParams(dp(256), dp(256));
-        padSize.gravity = Gravity.CENTER;
-        padSize.topMargin = dp(22);
-        content.addView(pad, padSize);
-        dpadRow(pad, new String[][] {{"", ""}, {"▲", "UP"}, {"", ""}});
-        dpadRow(pad, new String[][] {{"◀", "LEFT"}, {"אישור", "OK"}, {"▶", "RIGHT"}});
-        dpadRow(pad, new String[][] {{"", ""}, {"▼", "DOWN"}, {"", ""}});
-        LinearLayout sound = row();
-        for (String[] key :
-                new String[][] {
-                    {"קול +", "VOLUME_UP"}, {"השתקה", "MUTE"}, {"קול −", "VOLUME_DOWN"}
-                }) {
-            Button b = button(key[0], false, () -> key(key[1]));
-            control(b);
-            cell(sound, b);
+        pad.setBackground(shape(PANEL, 120));
+        ArrayList<View> padCells = new ArrayList<>();
+        String[][] names = {{"", "up", ""}, {"left", "ok", "right"}, {"", "down", ""}};
+        String[][] labels = {{"", "למעלה", ""}, {"שמאלה", "אישור", "ימינה"}, {"", "למטה", ""}};
+        String[][] keys = {{"", "UP", ""}, {"LEFT", "OK", "RIGHT"}, {"", "DOWN", ""}};
+        for (int r = 0; r < 3; r++) {
+            LinearLayout line = row();
+            line.setGravity(Gravity.CENTER);
+            line.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+            for (int col = 0; col < 3; col++) {
+                String key = keys[r][col];
+                View v =
+                        key.isEmpty()
+                                ? new View(this)
+                                : icon(names[r][col], labels[r][col], () -> key(key));
+                if (!key.isEmpty()) {
+                    control(v);
+                    v.setBackground(
+                            touchSurface(
+                                    key.equals("OK") ? 0xff326ae6 : Color.TRANSPARENT,
+                                    key.equals("OK") ? 24 : 30));
+                }
+                padCells.add(v);
+                line.addView(v, new LinearLayout.LayoutParams(dp(unit), dp(unit)));
+            }
+            pad.addView(line, new LinearLayout.LayoutParams(-1, 0, 1));
         }
-        add(sound, 22);
-        LinearLayout media = row();
-        for (String[] key :
-                new String[][] {
-                    {"קדימה", "FAST_FORWARD"}, {"ניגון / השהיה", "PLAY_PAUSE"}, {"אחורה", "REWIND"}
-                }) {
-            Button b = button(key[0], false, () -> key(key[1]));
-            b.setTextSize(13);
-            control(b);
-            cell(media, b);
+        LinearLayout.LayoutParams padSize =
+                new LinearLayout.LayoutParams(dp(unit * 3), dp(unit * 3));
+        padSize.setMargins(dp(12), 0, dp(12), 0);
+        middle.addView(pad, padSize);
+        LinearLayout wheel = new LinearLayout(this);
+        wheel.setOrientation(LinearLayout.VERTICAL);
+        wheel.setGravity(Gravity.CENTER);
+        wheel.setBackground(shape(PANEL, 25));
+        ImageButton up = icon("scrollUp", "גלילה למעלה", () -> screen.scrollPointer(0, -.65f));
+        ImageButton down = icon("scrollDown", "גלילה למטה", () -> screen.scrollPointer(0, .65f));
+        for (ImageButton v : new ImageButton[] {up, down}) {
+            v.setBackground(touchSurface(Color.TRANSPARENT, 24));
+            control(v);
+            wheel.addView(v, new LinearLayout.LayoutParams(dp(unit), dp(unit)));
         }
-        add(media, 12);
-        LinearLayout tools = row();
-        Button keyboard = button("כתיבה בטלוויזיה", false, this::keyboard);
-        control(keyboard);
-        cell(tools, keyboard);
-        Button applications = button("אפליקציות", false, this::applications);
-        control(applications);
-        cell(tools, applications);
-        add(tools, 24);
-        add(button("סיום עזרה", false, this::home), 20);
-        add(text("התמונה מיועדת לעזרה בניווט. תוכן מוגן עשוי להיות מוסתר.", 12, MUTED), 20);
+        middle.addView(wheel, new LinearLayout.LayoutParams(dp(unit), -2));
+        panel.addView(middle, new LinearLayout.LayoutParams(-1, 0, 1));
+        // כפתורי הניגון נשארים גלויים גם כאשר האפליקציה בטלוויזיה מסתירה את התמונה.
+        LinearLayout playback = row();
+        playback.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        for (String[] item :
+                new String[][] {
+                    {"rewind", "הרצה לאחור", "REWIND"},
+                    {"playPause", "ניגון או השהיה", "PLAY_PAUSE"},
+                    {"forward", "הרצה קדימה", "FAST_FORWARD"}
+                }) {
+            ImageButton button = icon(item[0], item[1], () -> key(item[2]));
+            control(button);
+            iconCell(playback, button, unit);
+        }
+        if (landscape) viewer.addView(playback);
+        else panel.addView(playback);
+        LinearLayout navigation = row();
+        navigation.setPadding(0, dp(4), 0, 0);
+        ImageButton[] nav = {
+            icon("back", "חזרה", () -> key("BACK")),
+            icon("home", "בית", () -> key("HOME")),
+            icon("apps", "אפליקציות", this::applications),
+            icon("keyboard", "כתיבה בטלוויזיה", this::keyboard)
+        };
+        for (ImageButton v : nav) {
+            control(v);
+            iconCell(navigation, v, unit);
+        }
+        panel.addView(navigation);
+        // התמונה שומרת על יחס הטלוויזיה. שטח נוסף מגדיל את השלט והריווח במקום ליצור שוליים שחורים
+        // ענקיים.
+        body.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (!landscape) {
+                int wanted =
+                        Math.max(
+                                dp(80),
+                                Math.min((r - l - dp(24)) * 9 / 16, b - t - dp(284 + unit)));
+                if (pictureSize.height != wanted) {
+                    pictureSize.height = wanted;
+                    viewer.setLayoutParams(pictureSize);
+                }
+            }
+        });
+        middle.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            int cell =
+                    Math.max(
+                            dp(30),
+                            Math.min(
+                                    dp(68),
+                                    Math.min(
+                                            (r - l - dp(unit * 2 + 24)) / 3,
+                                            (b - t - dp(12)) / 3)));
+            if (padSize.width != cell * 3) {
+                padSize.width = padSize.height = cell * 3;
+                pad.setLayoutParams(padSize);
+                for (View child : padCells) {
+                    child.setLayoutParams(new LinearLayout.LayoutParams(cell, cell));
+                    if (child instanceof ImageButton)
+                        child.setPadding(
+                                (cell - dp(24)) / 2,
+                                (cell - dp(24)) / 2,
+                                (cell - dp(24)) / 2,
+                                (cell - dp(24)) / 2);
+                }
+            }
+        });
+        setContentView(root);
+        ViewCompat.setOnApplyWindowInsetsListener(
+                root,
+                (view, insets) -> {
+                    Insets safe =
+                            insets.getInsets(
+                                    WindowInsetsCompat.Type.systemBars()
+                                            | WindowInsetsCompat.Type.displayCutout()
+                                            | WindowInsetsCompat.Type.ime());
+                    view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                    return insets;
+                });
+        if (frame != null && !paused) {
+            screen.setImageBitmap(frame);
+            if (frameMetadata != null) screen.geometry(frameMetadata);
+            screenMessage.setVisibility(View.GONE);
+        }
+        setConnected(connected);
+        refreshPointerMode();
     }
 
-    private void dpadRow(LinearLayout pad, String[][] items) {
-        LinearLayout row = new LinearLayout(this);
-        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        pad.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
-        for (String[] item : items) {
-            if (item[1].isEmpty()) {
-                row.addView(new View(this), new LinearLayout.LayoutParams(0, -1, 1));
-                continue;
-            }
-            Button b = button(item[0], item[1].equals("OK"), () -> key(item[1]));
-            b.setTextSize(item[1].equals("OK") ? 15 : 23);
-            b.setPadding(0, 0, 0, 0);
-            b.setMinWidth(0);
-            b.setMinimumWidth(0);
-            b.setContentDescription(
-                    switch (item[1]) {
-                        case "UP" -> "למעלה";
-                        case "DOWN" -> "למטה";
-                        case "LEFT" -> "שמאלה";
-                        case "RIGHT" -> "ימינה";
-                        default -> "אישור";
-                    });
-            if (!item[1].equals("OK")) b.setBackground(touchSurface(PANEL, 40));
-            control(b);
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -1, 1);
-            p.setMargins(dp(2), dp(2), dp(2), dp(2));
-            row.addView(b, p);
+    private void pointerMode(boolean relative) {
+        relativeMode = relative;
+        dragArmed = false;
+        getPreferences(MODE_PRIVATE).edit().putBoolean("pointerRelative", relative).apply();
+        refreshPointerMode();
+        toast(
+                relative
+                        ? "משטח מגע: הזזה באצבע, נגיעה ללחיצה ושתי אצבעות לגלילה"
+                        : "מגע ישיר: לחיצה וגרירה על התמונה; שתי אצבעות לגלילה");
+    }
+
+    private void refreshPointerMode() {
+        if (screen != null) {
+            screen.mode(relativeMode);
+            screen.drag(dragArmed);
+            screen.allowed(connected && pointerSupported && !paused);
         }
+        if (fullScreen != null) {
+            fullScreen.mode(relativeMode);
+            fullScreen.drag(dragArmed);
+            fullScreen.allowed(connected && pointerSupported && !paused);
+        }
+        if (directModeButton != null) {
+            directModeButton.setSelected(!relativeMode);
+            directModeButton.setBackground(touchSurface(!relativeMode ? 0xff203d69 : PANEL, 14));
+        }
+        if (padModeButton != null) {
+            padModeButton.setSelected(relativeMode);
+            padModeButton.setBackground(touchSurface(relativeMode ? 0xff203d69 : PANEL, 14));
+        }
+        if (dragButton != null) {
+            dragButton.setSelected(dragArmed);
+            dragButton.setBackground(touchSurface(dragArmed ? 0xff203d69 : PANEL, 14));
+            dragButton.setEnabled(connected && pointerSupported && relativeMode);
+            dragButton.setAlpha(dragButton.isEnabled() ? 1 : .35f);
+        }
+    }
+
+    private void pointerRequest(JSONObject args) {
+        RemoteClient active = connection;
+        if (active == null
+                || !connected
+                || paused
+                || !pointerSupported
+                || pointerBusy
+                || lastFrame == 0
+                || SystemClock.elapsedRealtime() - lastFrame > 4000) return;
+        pointerBusy = true;
+        active.call("pointer", args, 5000)
+                .whenComplete((value, error) ->
+                        main.post(() -> {
+                            if (connection != active) return;
+                            pointerBusy = false;
+                            if (!resumed) return;
+                            if (error != null) toast(explain(error));
+                        }));
     }
 
     private void select(String id) {
@@ -487,6 +703,8 @@ public final class MainActivity extends ComponentActivity {
         RemoteClient previous = connection;
         connection = null;
         connected = false;
+        pointerSupported = false;
+        pointerBusy = false;
         if (previous != null) previous.close();
         setConnected(false);
         clearFrame("החיבור הופסק");
@@ -532,7 +750,9 @@ public final class MainActivity extends ComponentActivity {
                                 return;
                             }
                             reconnects = 0;
+                            pointerSupported = info.optBoolean("pointer");
                             setConnected(true);
+                            refreshPointerMode();
                             status.setText("● מחוברים לטלוויזיה");
                             status.setTextColor(Color.rgb(133, 209, 175));
                             if (target.optBoolean("pending"))
@@ -635,17 +855,29 @@ public final class MainActivity extends ComponentActivity {
             if (connection != active || !resumed || paused) return;
             frame = bitmap;
             lastFrame = SystemClock.elapsedRealtime();
+            frameMetadata = value;
+            screen.geometry(value);
+            screen.allowed(connected && pointerSupported && !paused);
             screen.setImageBitmap(bitmap);
             screenMessage.setVisibility(View.GONE);
-            if (fullScreen != null) fullScreen.setImageBitmap(bitmap);
+            if (fullScreen != null) {
+                fullScreen.geometry(value);
+                fullScreen.allowed(connected && pointerSupported && !paused);
+                fullScreen.setImageBitmap(bitmap);
+            }
         } catch (Exception error) {
             clearFrame("לא ניתן להציג את התמונה כרגע");
         }
     }
 
     private void clearFrame(String message) {
+        // כשאין תמונה, חוזרים לשלט כדי שכפתורי הניגון לא יוסתרו מאחורי מסך מלא שחור.
+        if (fullDialog != null) fullDialog.dismiss();
         frame = null;
+        frameMetadata = null;
         lastFrame = 0;
+        if (screen != null) screen.allowed(false);
+        if (fullScreen != null) fullScreen.allowed(false);
         if (screen != null) screen.setImageDrawable(null);
         if (fullScreen != null) fullScreen.setImageDrawable(null);
         if (screenMessage != null) {
@@ -923,17 +1155,23 @@ public final class MainActivity extends ComponentActivity {
         Dialog dialog = new Dialog(this, android.R.style.Theme_Material_NoActionBar);
         FrameLayout box = new FrameLayout(this);
         box.setBackgroundColor(Color.BLACK);
-        fullScreen = new ImageView(this);
+        fullScreen = new PointerSurface(this, this::pointerRequest);
+        fullScreen.copyPositionFrom(screen);
+        if (frameMetadata != null) fullScreen.geometry(frameMetadata);
+        fullScreen.mode(relativeMode);
+        fullScreen.drag(dragArmed);
+        fullScreen.allowed(connected && pointerSupported && !paused);
         fullScreen.setScaleType(ImageView.ScaleType.FIT_CENTER);
         fullScreen.setImageBitmap(frame);
         box.addView(fullScreen, new FrameLayout.LayoutParams(-1, -1));
-        Button close = button("סגירה", false, dialog::dismiss);
+        ImageButton close = icon("close", "סגירת מסך מלא", dialog::dismiss);
         FrameLayout.LayoutParams p =
-                new FrameLayout.LayoutParams(dp(100), dp(48), Gravity.TOP | Gravity.END);
+                new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP | Gravity.END);
         p.setMargins(dp(16), dp(24), dp(16), dp(16));
         box.addView(close, p);
         dialog.setContentView(box);
         dialog.setOnDismissListener(d -> {
+            if (screen != null) screen.copyPositionFrom(fullScreen);
             fullScreen = null;
             fullDialog = null;
         });
@@ -973,7 +1211,11 @@ public final class MainActivity extends ComponentActivity {
             "ניתוק שליטה נוספת",
             "מדריך התקנה",
             "עדכוני האפליקציה בטלפון",
-            "עדכוני קרוב בטלוויזיה"
+            "עדכוני קרוב בטלוויזיה",
+            "הגדרות הטלוויזיה",
+            "הרצה לאחור",
+            "הרצה קדימה",
+            paused ? "חידוש תמונה" : "השהיית תמונה"
         };
         new AlertDialog.Builder(this)
                 .setTitle("אפשרויות")
@@ -1004,6 +1246,14 @@ public final class MainActivity extends ComponentActivity {
                                 case 5 -> guide();
                                 case 6 -> phoneUpdates();
                                 case 7 -> tvUpdates();
+                                case 8 -> key("SETTINGS");
+                                case 9 -> key("REWIND");
+                                case 10 -> key("FAST_FORWARD");
+                                case 11 -> {
+                                    paused = !paused;
+                                    clearFrame(paused ? "התמונה מושהית" : "מחדשים תמונה…");
+                                    if (!paused) capture(connection);
+                                }
                             }
                         })
                 .show();
@@ -1203,6 +1453,11 @@ public final class MainActivity extends ComponentActivity {
 
     private static String explain(Throwable error) {
         return switch (reason(error)) {
+            case "POINTER_BUSY" -> "המחווה הקודמת מסתיימת. נסו שוב בעוד רגע.";
+            case "POINTER_CANCELLED" -> "Android הפסיק את המחווה. אפשר לנסות שוב.";
+            case "STALE_GEOMETRY" -> "המסך שינה כיוון או גודל. המתינו לתמונה החדשה.";
+            case "NO_POINTER" -> "יש להשלים נגישות או שליטה נוספת בסטרימר.";
+            case "BAD_POINTER" -> "לא ניתן למפות את המיקום למסך הטלוויזיה.";
             case "OFFLINE" -> "הסטרימר אינו מחובר. מנסים שוב אוטומטית…";
             case "BUSY" -> "מכשיר אחר עוזר כרגע. מסיימים שם את העזרה ומנסים שוב.";
             case "DENIED", "EXPIRED" -> "הזיווג אינו תקף. פותחים זיווג חדש בטלוויזיה.";
@@ -1218,7 +1473,8 @@ public final class MainActivity extends ComponentActivity {
             case "CAPTURE_PERMISSION" ->
                     "נדרש אישור שיתוף מסך בטלוויזיה. בקשת שיתוף נמצאת באפשרויות.";
             case "CAPTURE_BUSY" -> "ממתינים לתמונה מעודכנת…";
-            case "SECURE_CONTENT" -> "התוכן מוגן מצילום. אפשר להמשיך להשתמש בשלט.";
+            case "SECURE_CONTENT" -> "התוכן מוגן מצילום. כפתורי השלט והניגון זמינים.";
+            case "CAPTURE_FAILED" -> "התמונה אינה זמינה כרגע. כפתורי השלט והניגון זמינים.";
             case "NO_TEXT_FIELD" -> "פותחים קודם שדה חיפוש בטלוויזיה.";
             case "UNSUPPORTED" -> "הפעולה אינה זמינה במסך או בדגם הזה.";
             case "STORAGE_UNAVAILABLE" -> "לא ניתן לשמור את הזיווג בטלפון.";

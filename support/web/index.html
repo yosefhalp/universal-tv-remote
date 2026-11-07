@@ -2,19 +2,28 @@
 <html lang="he" dir="rtl">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#111216" />
     <meta name="referrer" content="no-referrer" />
     <title>קרוב — מרכז השליטה</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="app.webmanifest" />
-    <link rel="stylesheet" href="style.css?v=3" />
+    <link rel="stylesheet" href="style.css?v=4" />
     <script type="module" src="app.mjs"></script>
   </head>
   <body>
-    <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <svg
+      class="icon-library"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
       <defs>
-        <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10H15v-7H9v7H3Z" /></symbol>
+        <symbol id="i-home" viewBox="0 0 24 24">
+          <path d="m3 10 9-7 9 7v10H15v-7H9v7H3Z" />
+        </symbol>
         <symbol id="i-back" viewBox="0 0 24 24">
           <path d="m9 5-6 6 6 6M3 11h11a6 6 0 0 1 6 6v3" />
         </symbol>
@@ -24,12 +33,20 @@
         <symbol id="i-expand" viewBox="0 0 24 24">
           <path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6" />
         </symbol>
-        <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m7 14 5-5 5 5" /></symbol>
-        <symbol id="i-volume" viewBox="0 0 24 24">
-          <path d="M3 9h4l5-4v14l-5-4H3ZM16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14" />
+        <symbol id="i-chevron" viewBox="0 0 24 24">
+          <path d="m7 14 5-5 5 5" />
         </symbol>
-        <symbol id="i-play" viewBox="0 0 24 24"><path d="m4 5 9 7-9 7ZM17 5v14m4-14v14" /></symbol>
-        <symbol id="i-forward" viewBox="0 0 24 24"><path d="m3 5 8 7-8 7Zm10 0 8 7-8 7Z" /></symbol>
+        <symbol id="i-volume" viewBox="0 0 24 24">
+          <path
+            d="M3 9h4l5-4v14l-5-4H3ZM16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"
+          />
+        </symbol>
+        <symbol id="i-play" viewBox="0 0 24 24">
+          <path d="m4 5 9 7-9 7ZM17 5v14m4-14v14" />
+        </symbol>
+        <symbol id="i-forward" viewBox="0 0 24 24">
+          <path d="m3 5 8 7-8 7Zm10 0 8 7-8 7Z" />
+        </symbol>
         <symbol id="i-tv" viewBox="0 0 24 24">
           <rect x="2" y="4" width="20" height="14" rx="2" />
           <path d="M8 22h8m-4-4v4" />
@@ -67,21 +84,28 @@
             <div id="empty" class="empty">
               <div class="tv-illustration" aria-hidden="true">
                 <div class="tv-display">
-                  <svg><use href="#i-tv" /></svg><span>מוכנים להתחבר</span><i></i>
+                  <svg><use href="#i-tv" /></svg><span>מוכנים להתחבר</span
+                  ><i></i>
                 </div>
                 <div class="tv-stand"></div>
               </div>
               <h2>נוסיף את הטלוויזיה הראשונה</h2>
-              <p>פותחים את ״קרוב״ בסטרימר. סורקים QR בטלפון, או מקלידים קוד קצר.</p>
+              <p>
+                פותחים את ״קרוב״ בסטרימר. סורקים QR בטלפון, או מקלידים קוד קצר.
+              </p>
               <span class="empty-step">הגדרה אחת. אחר כך פשוט מתחברים.</span>
             </div>
           </section>
           <aside class="setup-panel">
             <div class="section-number">01 / SETUP</div>
             <h2>חיבור חדש</h2>
-            <p>הזיווג נותן למכשיר שלך גישה למסך ולשלט. אפשר לצרף גם את המחשב.</p>
+            <p>
+              הזיווג נותן למכשיר שלך גישה למסך ולשלט. אפשר לצרף גם את המחשב.
+            </p>
             <details id="pair-details">
-              <summary>חיבור בקוד קצר <span aria-hidden="true">↗</span></summary>
+              <summary>
+                חיבור בקוד קצר <span aria-hidden="true">↗</span>
+              </summary>
               <form id="pair-form">
                 <p id="qr-ready" role="status" hidden></p>
                 <div id="code-entry">
@@ -96,7 +120,9 @@
                     placeholder="00-000-000"
                     aria-describedby="code-hint"
                   />
-                  <p id="code-hint" class="hint">8 ספרות · לצירוף המכשיר פעם אחת בלבד</p>
+                  <p id="code-hint" class="hint">
+                    8 ספרות · לצירוף המכשיר פעם אחת בלבד
+                  </p>
                 </div>
                 <details id="legacy-pair">
                   <summary>יש לי קישור זיווג</summary>
@@ -125,7 +151,10 @@
               <svg class="icon"><use href="#i-lock" /></svg>
               <div>
                 <strong>גישה אישית, חיבור מוצפן</strong>
-                <p>רק המכשירים שזיווגת יכולים לשלוט. ביטול גישה זמין בכל רגע בטלוויזיה.</p>
+                <p>
+                  רק המכשירים שזיווגת יכולים לשלוט. ביטול גישה זמין בכל רגע
+                  בטלוויזיה.
+                </p>
               </div>
             </div>
             <p><a href="/setup.html">הורדה והכנה ראשונית של הטלוויזיה ←</a></p>
@@ -138,7 +167,9 @@
             <p class="eyebrow">REMOTE SESSION</p>
             <h1 id="tv-name">הטלוויזיה</h1>
           </div>
-          <button id="disconnect" class="quiet">סיום עזרה <span aria-hidden="true">↗</span></button>
+          <button id="disconnect" class="quiet">
+            סיום עזרה <span aria-hidden="true">↗</span>
+          </button>
         </div>
         <div class="workspace">
           <div class="screen-column">
@@ -147,16 +178,41 @@
             </div>
             <div class="screen" id="screen">
               <img id="frame" alt="מסך הסטרימר בזמן העזרה" hidden />
+              <svg
+                id="pointer-cursor"
+                aria-hidden="true"
+                viewBox="0 0 24 30"
+                hidden
+              >
+                <path d="M2 2V24L8 18L13 28L18 25L12 16H22Z" />
+              </svg>
               <div id="screen-message" class="screen-message" role="status">
                 מחכים לתמונה הראשונה…
               </div>
               <div class="screen-caption">
                 <span id="frame-status">מתחבר</span
-                ><button id="fullscreen" class="screen-button" aria-label="מסך מלא">
+                ><button
+                  id="fullscreen"
+                  class="screen-button"
+                  aria-label="מסך מלא"
+                >
                   <svg class="icon"><use href="#i-expand" /></svg>
                 </button>
               </div>
             </div>
+            <div
+              class="pointer-tools"
+              role="group"
+              aria-label="שליטה בעכבר ובמגע"
+            >
+              <button id="pointer-direct" aria-pressed="true">מגע ישיר</button>
+              <button id="pointer-pad" aria-pressed="false">משטח מגע</button>
+              <button id="pointer-click" title="לחיצה במקום הסמן">לחיצה</button>
+              <button id="pointer-drag" aria-pressed="false">גרירה</button>
+              <button id="pointer-up" aria-label="גלילה למעלה">↥</button>
+              <button id="pointer-down" aria-label="גלילה למטה">↧</button>
+            </div>
+            <p id="pointer-hint" class="hint"></p>
             <div class="screen-tools">
               <label
                 >קצב תמונה
@@ -165,8 +221,11 @@
                   <option value="1000">חיסכון ברשת</option>
                   <option value="350">מהיר</option>
                 </select></label
-              ><button id="pause-screen" class="quiet" aria-pressed="false">השהיית תמונה</button
-              ><button id="capture-permission" class="quiet" hidden>בקשת שיתוף בטלוויזיה</button>
+              ><button id="pause-screen" class="quiet" aria-pressed="false">
+                השהיית תמונה</button
+              ><button id="capture-permission" class="quiet" hidden>
+                בקשת שיתוף בטלוויזיה
+              </button>
             </div>
             <p id="capability-note" class="hint"></p>
             <section class="apps-section">
@@ -184,11 +243,14 @@
             </div>
             <div class="remote-top">
               <button data-key="HOME" aria-label="בית">
-                <svg class="icon"><use href="#i-home" /></svg><span>בית</span></button
+                <svg class="icon"><use href="#i-home" /></svg
+                ><span>בית</span></button
               ><button data-key="BACK" aria-label="חזרה">
-                <svg class="icon"><use href="#i-back" /></svg><span>חזרה</span></button
+                <svg class="icon"><use href="#i-back" /></svg
+                ><span>חזרה</span></button
               ><button data-key="SETTINGS" aria-label="הגדרות">
-                <svg class="icon"><use href="#i-settings" /></svg><span>הגדרות</span>
+                <svg class="icon"><use href="#i-settings" /></svg
+                ><span>הגדרות</span>
               </button>
             </div>
             <div class="dpad" dir="ltr">
@@ -236,34 +298,50 @@
                 פותחים כדי לבדוק את הגרסה המותקנת.
               </p>
               <p class="hint">
-                העדכון שומר את הזיווג. בזמן ההתקנה העזרה מתנתקת לרגע וחוזרת אוטומטית.
+                העדכון שומר את הזיווג. בזמן ההתקנה העזרה מתנתקת לרגע וחוזרת
+                אוטומטית.
               </p>
               <button id="update-check" class="quiet">בדיקה והורדה</button>
-              <button id="update-install" class="quiet" disabled>התקנת עדכון</button>
+              <button id="update-install" class="quiet" disabled>
+                התקנת עדכון
+              </button>
             </details>
             <details>
               <summary>שליטה נוספת לדגמים ישנים</summary>
               <p class="hint">
-                אם החצים אינם עובדים, אפשר לחבר ניפוי שגיאות מקומי. מפעילים מראש ניפוי שגיאות ברשת
-                בסטרימר, ואז מאשרים בטלוויזיה את המפתח של קרוב ובוחרים באישור קבוע.
+                אם החצים אינם עובדים, אפשר לחבר ניפוי שגיאות מקומי. מפעילים מראש
+                ניפוי שגיאות ברשת בסטרימר, ואז מאשרים בטלוויזיה את המפתח של קרוב
+                ובוחרים באישור קבוע.
               </p>
               <button id="adb-enable" class="quiet">חיבור שליטה נוספת</button
-              ><button id="adb-disable" class="quiet">כיבוי השליטה הנוספת</button
+              ><button id="adb-disable" class="quiet">
+                כיבוי השליטה הנוספת</button
               ><button id="adb-status" class="quiet">בדיקת חיבור</button>
               <p id="android-remote-status" class="hint"></p>
             </details>
             <details>
               <summary>גישה ומכשירים</summary>
               <div id="controllers"></div>
-              <button id="refresh-controllers" class="quiet">רענון מכשירים מורשים</button
-              ><button id="forget" class="danger">ביטול הגישה של המכשיר הזה</button>
+              <button id="refresh-controllers" class="quiet">
+                רענון מכשירים מורשים</button
+              ><button id="forget" class="danger">
+                ביטול הגישה של המכשיר הזה
+              </button>
             </details>
           </aside>
         </div>
       </section>
-      <div id="notice" role="status" aria-live="polite" class="notice" hidden></div>
+      <div
+        id="notice"
+        role="status"
+        aria-live="polite"
+        class="notice"
+        hidden
+      ></div>
     </main>
-    <footer><span>קרוב. גם מרחוק.</span><span class="mono">FAMILY REMOTE / 1.0</span></footer>
+    <footer>
+      <span>קרוב. גם מרחוק.</span><span class="mono">FAMILY REMOTE / 1.0</span>
+    </footer>
     <dialog id="confirm-dialog">
       <form method="dialog">
         <h2 id="confirm-title">אישור פעולה</h2>
