@@ -23,11 +23,13 @@ public final class LocalAdb {
     private static LocalAdb instance;
 
     public static synchronized LocalAdb get(Context context) throws Exception {
-        if (instance == null) instance = new LocalAdb(Vault.open(context));
+        if (instance == null)
+            instance = new LocalAdb(context.getApplicationContext(), Vault.open(context));
         return instance;
     }
 
     private final Vault vault;
+    private final Context context;
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
     private volatile Socket socket;
     private volatile boolean ready, running;
@@ -43,7 +45,8 @@ public final class LocalAdb {
             WRTE = 0x45545257,
             CLSE = 0x45534c43;
 
-    private LocalAdb(Vault vault) {
+    private LocalAdb(Context context, Vault vault) {
+        this.context = context;
         this.vault = vault;
     }
 
@@ -272,6 +275,88 @@ public final class LocalAdb {
             } else if (packet.command != OKAY) throw new IOException("ADB_MESSAGE");
         }
         throw new IOException("ADB_LIMIT");
+    }
+
+    // מסלול מוגבל לעדכון קרוב עצמה בלבד. אין קבלת פקודת shell, כתובת או קובץ מהשלט הרחוק.
+    public void installUpdate(File apk) throws Exception {
+        if (!apk.getCanonicalFile()
+                .equals(new File(context.getFilesDir(), "karov-update.apk").getCanonicalFile()))
+            throw new IOException("UPDATE_PATH");
+        org.yosef.karov.updates.UpdateSpec spec =
+                new org.yosef.karov.updates.UpdateSpec(
+                        new org.json.JSONObject(
+                                context.getSharedPreferences("karov-updates", Context.MODE_PRIVATE)
+                                        .getString("spec", "{}")),
+                        context.getPackageName());
+        org.yosef.karov.updates.UpdateEngine.verify(context, apk, spec);
+        worker.submit(
+                        () -> {
+                            Socket active = socket;
+                            long current = generation;
+                            if (!running || !ready || active == null)
+                                throw new IOException("ADB_UNAVAILABLE");
+                            try (InputStream input = new FileInputStream(apk)) {
+                                active.setSoTimeout(120000);
+                                int local = ++streamId, peer = 0;
+                                long sent = 0;
+                                boolean awaitingAck = false;
+                                write(
+                                        active,
+                                        OPEN,
+                                        local,
+                                        0,
+                                        Crypto.bytes(
+                                                "exec:cmd package install -r -S "
+                                                        + apk.length()
+                                                        + "\0"));
+                                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                                for (int count = 0; count < 20000; count++) {
+                                    Packet packet = read(active);
+                                    if (packet.arg1 != local || peer != 0 && packet.arg0 != peer)
+                                        throw new IOException("ADB_STREAM");
+                                    peer = packet.arg0;
+                                    if (packet.command == OKAY) {
+                                        awaitingAck = false;
+                                    } else if (packet.command == WRTE) {
+                                        if (output.size() + packet.data.length > 16384)
+                                            throw new IOException("ADB_LIMIT");
+                                        output.write(packet.data);
+                                        write(active, OKAY, local, peer, new byte[0]);
+                                    } else if (packet.command == CLSE) {
+                                        write(active, CLSE, local, peer, new byte[0]);
+                                        if (sent != apk.length()
+                                                || !output.toString("UTF-8")
+                                                        .trim()
+                                                        .equals("Success"))
+                                            throw new IOException("UPDATE_INSTALL");
+                                        return null;
+                                    } else throw new IOException("ADB_MESSAGE");
+                                    if (!awaitingAck && sent < apk.length()) {
+                                        byte[] buffer =
+                                                new byte[(int) Math.min(4096, apk.length() - sent)];
+                                        int read = input.read(buffer);
+                                        if (read <= 0) throw new IOException("UPDATE_SIZE");
+                                        write(
+                                                active,
+                                                WRTE,
+                                                local,
+                                                peer,
+                                                read == buffer.length
+                                                        ? buffer
+                                                        : Arrays.copyOf(buffer, read));
+                                        sent += read;
+                                        awaitingAck = true;
+                                    }
+                                }
+                                throw new IOException("ADB_LIMIT");
+                            } catch (Exception error) {
+                                disconnected(active, current);
+                                throw error;
+                            } finally {
+                                if (!active.isClosed()) active.setSoTimeout(10000);
+                            }
+                        })
+                .get(150, TimeUnit.SECONDS);
     }
 
     private static KeyStore identity() throws Exception {

@@ -16,6 +16,7 @@ import { dirname, resolve, extname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { PairingDirectory } from './pairing-directory.mjs';
+import { EnrollmentPassword, decodeEnrollment } from './enrollment.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../web');
 const TYPES = {
@@ -27,6 +28,7 @@ const TYPES = {
   '.png': 'image/png',
   '.apk': 'application/vnd.android.package-archive',
   '.webmanifest': 'application/manifest+json',
+  '.json': 'application/json; charset=utf-8',
 };
 const digest = (token) => createHash('sha256').update(token).digest('hex');
 const equal = (a, b) => {
@@ -43,6 +45,7 @@ export async function startServer({
   publicOrigin = '',
   registrationKey = '',
   registrationKeyHash = '',
+  enrollmentPasswordVerifier = '',
   maxDevices = 32,
   maxConnections = 128,
 } = {}) {
@@ -63,6 +66,9 @@ export async function startServer({
     throw new Error('INVALID_ENROLLMENT_HASH');
   // בשרת קבוע שומרים גיבוב בלבד; מפתח ההתקנה עצמו נשאר אצל המתקין.
   const enrollmentHash = registrationKeyHash || (registrationKey ? digest(registrationKey) : '');
+  const password = enrollmentPasswordVerifier
+    ? new EnrollmentPassword(enrollmentPasswordVerifier)
+    : null;
   const rooms = new Map(),
     rates = new Map();
   const pairings = new PairingDirectory();
@@ -162,9 +168,11 @@ export async function startServer({
   const close = (ws, code = 1000) => {
     if (ws && ws.readyState < WebSocket.CLOSING) ws.close(code);
   };
-  server.on('upgrade', (req, socket, head) => {
+  server.on('upgrade', async (req, socket, head) => {
+    // גם חיבור שנסגר במהלך גיבוב הסיסמה מטופל בלי שגיאת socket לא נתפסת.
+    socket.on('error', () => {});
     const reject = (status) => {
-      socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
+      socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
     };
     let url;
     try {
@@ -213,12 +221,25 @@ export async function startServer({
         return;
       }
       if (!Object.hasOwn(devices, id)) {
-        const enrollment = req.headers['x-karov-enrollment'];
-        if (
-          !enrollmentHash ||
-          typeof enrollment !== 'string' ||
-          !equal(digest(enrollment), enrollmentHash)
-        ) {
+        const enrollment = decodeEnrollment(req.headers['x-karov-enrollment']);
+        let accepted;
+        try {
+          accepted = password
+            ? await password.check(enrollment, address)
+            : enrollmentHash && equal(digest(enrollment), enrollmentHash)
+              ? 'OK'
+              : 'DENIED';
+        } catch {
+          reject('503 Service Unavailable');
+          return;
+        }
+        if (socket.destroyed) return;
+        if (accepted !== 'OK') {
+          reject(accepted === 'LIMIT' ? '429 Too Many Requests' : '403 Forbidden');
+          return;
+        }
+        // גיבוב אסינכרוני אינו רשאי לדרוס זהות שנרשמה בינתיים בחיבור אחר.
+        if (Object.hasOwn(devices, id) && !equal(devices[id], hash)) {
           reject('403 Forbidden');
           return;
         }
@@ -374,6 +395,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     publicOrigin: process.env.PUBLIC_ORIGIN || '',
     registrationKey: process.env.ENROLLMENT_KEY || '',
     registrationKeyHash: process.env.ENROLLMENT_KEY_HASH || '',
+    enrollmentPasswordVerifier: process.env.ENROLLMENT_PASSWORD_VERIFIER || '',
   });
   console.log(`TV Support listening on port ${service.port}`);
   let stopping = false;

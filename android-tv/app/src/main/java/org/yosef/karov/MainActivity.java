@@ -164,6 +164,11 @@ public final class MainActivity extends Activity {
             return;
         }
         text("קרוב", 36);
+        button(
+                "עדכוני קרוב",
+                () ->
+                        startActivity(
+                                new Intent(this, org.yosef.karov.updates.UpdateActivity.class)));
         text("עזרה משפחתית בטלוויזיה", 21);
         state = text(SupportService.status, 14);
         text(
@@ -172,7 +177,7 @@ public final class MainActivity extends Activity {
                 15);
         name = field(vault.get("name"), "שם הטלוויזיה", false);
         server = field(vault.get("server"), "https://כתובת-השרת", true);
-        enrollment = field("", "מפתח התקנה של השרת (לרישום הראשון)", true);
+        enrollment = field("", "סיסמת ההתקנה שלך (בהכנה הראשונה בלבד)", true);
         enrollment.setInputType(
                 android.text.InputType.TYPE_CLASS_TEXT
                         | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -270,6 +275,11 @@ public final class MainActivity extends Activity {
         text("קרוב  /  מרכז העזרה המשפחתי", 15).setTextColor(0xffff784e);
         text(vault.enabled() ? "עזרה מרחוק מופעלת." : "העזרה מושהית.", 36);
         state = text(SupportService.status, 15);
+        button(
+                "עדכוני קרוב",
+                () ->
+                        startActivity(
+                                new Intent(this, org.yosef.karov.updates.UpdateActivity.class)));
         text(
                 "אחרי הזיווג הראשון, בן המשפחה מתחבר מהטלפון או מהמחשב שלו. אפשר להמשיך לצפות"
                         + " כרגיל.",

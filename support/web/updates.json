@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "tv": {
+    "applicationId": "org.yosef.karov",
+    "versionCode": 10,
+    "versionName": "1.2.2",
+    "minSdk": 28,
+    "bytes": 9159618,
+    "sha256": "8842bac5f3ad104fe068aa2c41b016127310db6fc0c6f1f7fc0e40106884b152",
+    "path": "karov-tv-1.2.2.apk",
+    "notes": "עדכונים אוטומטיים עם מעבר למתקין Android אם החיבור המקומי נכשל. הזיווגים נשמרים."
+  },
+  "phone": {
+    "applicationId": "org.yosef.karov.phone",
+    "versionCode": 7,
+    "versionName": "1.2.2",
+    "minSdk": 28,
+    "bytes": 12074501,
+    "sha256": "a8c3ec7c51b4e3b9975d668742141f8f2cac03886e55f0130b59f9b75ee431f0",
+    "path": "karov-phone-1.2.2.apk",
+    "notes": "עדכונים אוטומטיים עם מעבר למתקין Android אם החיבור המקומי נכשל. הזיווגים נשמרים."
+  }
+}

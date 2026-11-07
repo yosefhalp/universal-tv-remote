@@ -1,5 +1,5 @@
 :root {
-  font-family: 'Segoe UI', Arial, sans-serif;
+  font-family: "Segoe UI", Arial, sans-serif;
   color: #202124;
   background: #fff;
   font-synthesis: none;
@@ -428,6 +428,23 @@ h4 {
   color: var(--muted);
   margin-top: 10px;
 }
+#updates .pairing-figure {
+  float: left;
+  width: min(280px, 40%);
+  margin: 20px 26px 20px 0;
+}
+#updates::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+@media (max-width: 600px) {
+  #updates .pairing-figure {
+    float: none;
+    width: min(240px, 100%);
+    margin: 20px auto;
+  }
+}
 .checklist {
   margin-top: 24px;
   border: 1px solid var(--line);
@@ -443,7 +460,7 @@ h4 {
 .checklist label + label {
   border-top: 1px solid var(--line);
 }
-input[type='checkbox'] {
+input[type="checkbox"] {
   width: 21px;
   height: 21px;
   flex-shrink: 0;

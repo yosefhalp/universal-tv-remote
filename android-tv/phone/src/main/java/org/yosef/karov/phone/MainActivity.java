@@ -70,7 +70,7 @@ public final class MainActivity extends ComponentActivity {
                                         .setTitle("חיבור " + pairing.name)
                                         .setMessage(
                                                 "לשמור בטלפון הזה הרשאה לצפות במסך ולשלוט"
-                                                    + " בטלוויזיה?")
+                                                        + " בטלוויזיה?")
                                         .setPositiveButton(
                                                 "חיבור ושמירה", (d, w) -> pair(pairing, null))
                                         .setNegativeButton("ביטול", null)
@@ -92,7 +92,7 @@ public final class MainActivity extends ComponentActivity {
             TextView failure =
                     text(
                             "לא ניתן לקרוא את הזיווגים השמורים. אין למחוק את נתוני האפליקציה לפני"
-                                + " בדיקה.",
+                                    + " בדיקה.",
                             20,
                             Color.WHITE);
             failure.setPadding(dp(24), dp(60), dp(24), dp(30));
@@ -229,11 +229,10 @@ public final class MainActivity extends ComponentActivity {
         bar.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
         Button more =
                 button(
-                        selected == null ? "מדריך התקנה ↗" : "אפשרויות",
+                        "אפשרויות",
                         false,
                         () -> {
-                            if (selected == null) guide();
-                            else options();
+                            options();
                         });
         bar.addView(more);
         root.addView(bar);
@@ -281,7 +280,7 @@ public final class MainActivity extends ComponentActivity {
                 TextView hint =
                         text(
                                 "פותחים קרוב בסטרימר ובוחרים זיווג.\n"
-                                    + "סורקים QR או מקלידים קוד קצר כאן.",
+                                        + "סורקים QR או מקלידים קוד קצר כאן.",
                                 15,
                                 MUTED);
                 hint.setGravity(Gravity.CENTER);
@@ -495,6 +494,7 @@ public final class MainActivity extends ComponentActivity {
 
     private void setConnected(boolean value) {
         connected = value;
+        org.yosef.karov.updates.UpdateEngine.get(this).busy(value);
         for (View view : controls) {
             view.setEnabled(value);
             view.setAlpha(value ? 1 : 0.4f);
@@ -953,13 +953,27 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void options() {
+        if (selected == null) {
+            new AlertDialog.Builder(this)
+                    .setTitle("אפשרויות")
+                    .setItems(
+                            new String[] {"עדכוני האפליקציה בטלפון", "מדריך התקנה"},
+                            (d, which) -> {
+                                if (which == 0) phoneUpdates();
+                                else guide();
+                            })
+                    .show();
+            return;
+        }
         String[] items = {
             "החלפת טלוויזיה",
             "מכשירים מורשים",
             "בקשת שיתוף בטלוויזיה",
             "חיבור שליטה נוספת",
             "ניתוק שליטה נוספת",
-            "מדריך התקנה"
+            "מדריך התקנה",
+            "עדכוני האפליקציה בטלפון",
+            "עדכוני קרוב בטלוויזיה"
         };
         new AlertDialog.Builder(this)
                 .setTitle("אפשרויות")
@@ -975,9 +989,9 @@ public final class MainActivity extends ComponentActivity {
                                                 .setTitle("שליטה נוספת")
                                                 .setMessage(
                                                         "האפשרות דורשת הכנה חד־פעמית של ניפוי"
-                                                            + " שגיאות ברשת בסטרימר ואישור על"
-                                                            + " הטלוויזיה. להפעיל את החיבור"
-                                                            + " המקומי?")
+                                                                + " שגיאות ברשת בסטרימר ואישור על"
+                                                                + " הטלוויזיה. להפעיל את החיבור"
+                                                                + " המקומי?")
                                                 .setPositiveButton(
                                                         "הפעלה",
                                                         (a, b) ->
@@ -988,9 +1002,86 @@ public final class MainActivity extends ComponentActivity {
                                                 .show();
                                 case 4 -> action("adbDisable", new JSONObject());
                                 case 5 -> guide();
+                                case 6 -> phoneUpdates();
+                                case 7 -> tvUpdates();
                             }
                         })
                 .show();
+    }
+
+    private void phoneUpdates() {
+        startActivity(new Intent(this, org.yosef.karov.updates.UpdateActivity.class));
+    }
+
+    private void tvUpdates() {
+        TextView message = text("בודקים את מצב הסטרימר…", 16, Color.WHITE);
+        message.setPadding(dp(24), dp(20), dp(24), dp(20));
+        AlertDialog dialog =
+                new AlertDialog.Builder(this)
+                        .setTitle("עדכוני קרוב בטלוויזיה")
+                        .setView(message)
+                        .setPositiveButton("בדיקה והורדה", null)
+                        .setNeutralButton("התקנת עדכון", null)
+                        .setNegativeButton("סגירה", null)
+                        .create();
+        Runnable poll =
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!resumed || !dialog.isShowing()) return;
+                        RemoteClient active = connection;
+                        if (active == null || !connected) {
+                            message.setText("ממתינים לחיבור מחדש לסטרימר…");
+                            main.postDelayed(this, 2000);
+                            return;
+                        }
+                        active.call("updateInfo", new JSONObject(), 10000)
+                                .whenComplete((value, error) ->
+                                        main.post(() -> {
+                                            if (!resumed || !dialog.isShowing()) return;
+                                            if (connection == active
+                                                    && error == null
+                                                    && value instanceof JSONObject info) {
+                                                message.setText(
+                                                        "גרסה מותקנת: "
+                                                                + info.optString("version")
+                                                                + "\n\n"
+                                                                + info.optString("message")
+                                                                + "\n\n"
+                                                                + "ההתקנה תנתק לרגע את העזרה."
+                                                                + " הזיווג יישמר והחיבור יתחדש"
+                                                                + " אוטומטית.");
+                                                boolean idle =
+                                                        !info.optBoolean("working")
+                                                                && !info.optString("state")
+                                                                        .equals("installing");
+                                                dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                                                        .setEnabled(idle);
+                                                dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+                                                        .setEnabled(
+                                                                idle
+                                                                        && !info.optString("latest")
+                                                                                .isEmpty()
+                                                                        && !info.optString("state")
+                                                                                .equals("current"));
+                                            } else
+                                                message.setText(
+                                                        "מצב העדכון אינו זמין. גרסאות ישנות דורשות"
+                                                                + " התקנה ראשונה של APK הכולל"
+                                                                + " עדכונים.");
+                                            main.postDelayed(this, 2000);
+                                        }));
+                    }
+                };
+        dialog.setOnShowListener(d -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                    .setOnClickListener(v -> action("updateCheck", new JSONObject()));
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+                    .setOnClickListener(v -> action("updateInstall", new JSONObject()));
+            poll.run();
+        });
+        dialog.setOnDismissListener(d -> main.removeCallbacks(poll));
+        dialog.show();
     }
 
     private void controllers() {
@@ -1079,7 +1170,7 @@ public final class MainActivity extends ComponentActivity {
                 .setTitle("להסיר את " + name + "?")
                 .setMessage(
                         "הזיווג יוסר מהטלפון הזה. לביטול ההרשאה בטלוויזיה עצמה משתמשים במכשירים"
-                            + " מורשים.")
+                                + " מורשים.")
                 .setPositiveButton(
                         "הסרה מהטלפון",
                         (d, w) -> {
@@ -1118,7 +1209,7 @@ public final class MainActivity extends ComponentActivity {
             case "BAD_CODE" -> "מזינים את שמונה הספרות שמופיעות בטלוויזיה.";
             case "CODE_DENIED" ->
                     "הקוד לא התקבל. בדקו את הספרות. אחרי חמישה ניסיונות פותחים קוד חדש או סורקים"
-                        + " QR.";
+                            + " QR.";
             case "CODE_NOT_FOUND" -> "הקוד אינו זמין. בדקו את הספרות ופתחו זיווג חדש בטלוויזיה.";
             case "CODE_LIMIT", "BLOCKED" -> "בוצעו יותר מדי ניסיונות. המתינו מעט ונסו שוב.";
             case "BAD_PAIRING", "BAD_IDENTITY", "BAD_HANDSHAKE" ->

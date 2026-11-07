@@ -440,6 +440,41 @@ $('adb-status').onclick = async () => {
   const info = await action('info');
   if (info) $('android-remote-status').textContent = info.remoteStatus;
 };
+let updatePolling = false;
+async function refreshUpdate() {
+  if (updatePolling || !$('update-panel').open || document.hidden) return;
+  const active = connection;
+  if (!active?.ready) {
+    $('update-status').textContent = 'ממתינים לחיבור מחדש לסטרימר…';
+    $('update-check').disabled = $('update-install').disabled = true;
+    return;
+  }
+  updatePolling = true;
+  try {
+    const info = await active.call('updateInfo');
+    if (connection !== active) return;
+    $('update-status').textContent = `גרסה מותקנת: ${info.version}. ${info.message}`;
+    $('update-check').disabled = info.working || info.state === 'installing';
+    $('update-install').disabled =
+      $('update-check').disabled || !info.latest || info.state === 'current';
+  } catch {
+    $('update-status').textContent =
+      'מצב העדכון אינו זמין. בגרסה ישנה יש להתקין תחילה APK שכולל עדכונים.';
+    $('update-check').disabled = $('update-install').disabled = true;
+  } finally {
+    updatePolling = false;
+  }
+}
+$('update-panel').addEventListener('toggle', refreshUpdate);
+$('update-check').onclick = async () => {
+  await action('updateCheck');
+  await refreshUpdate();
+};
+$('update-install').onclick = async () => {
+  await action('updateInstall');
+  await refreshUpdate();
+};
+setInterval(refreshUpdate, 2500);
 $('fullscreen').onclick = () => {
   if (document.fullscreenElement) document.exitFullscreen?.();
   else

@@ -1,4 +1,7 @@
-plugins { id 'com.android.application' version '8.13.2' apply false }
+plugins {
+    id 'com.android.application' version '8.13.2' apply false
+    id 'com.android.library' version '8.13.2' apply false
+}
 // נתיב פלט חלופי מאפשר להריץ בדיקות Java גם ב-Windows כשהפרויקט נמצא בתיקייה בעברית.
 if (System.getenv('KAROV_BUILD_DIR')) {
     allprojects { layout.buildDirectory = file(System.getenv('KAROV_BUILD_DIR') + '/' + project.name) }

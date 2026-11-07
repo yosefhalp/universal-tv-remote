@@ -36,6 +36,23 @@ public final class SupportService extends Service {
             keepAvailable();
             DeviceActions actions = new DeviceActions(this);
             LocalAdb.get(this).start();
+            org.yosef.karov.updates.UpdateEngine.get(this)
+                    .localInstaller(
+                            new org.yosef.karov.updates.UpdateEngine.LocalInstaller() {
+                                @Override
+                                public boolean available() {
+                                    try {
+                                        return LocalAdb.get(SupportService.this).ready();
+                                    } catch (Exception error) {
+                                        return false;
+                                    }
+                                }
+
+                                @Override
+                                public void install(java.io.File apk) throws Exception {
+                                    LocalAdb.get(SupportService.this).installUpdate(apk);
+                                }
+                            });
             link =
                     new RemoteLink(
                             vault,
@@ -43,6 +60,7 @@ public final class SupportService extends Service {
                             (text, active) -> {
                                 if (destroyed) return;
                                 status = text;
+                                org.yosef.karov.updates.UpdateEngine.get(this).busy(active);
                                 manager.notify(10, notification(text, active));
                                 sendBroadcast(
                                         new Intent(getPackageName() + ".STATE")

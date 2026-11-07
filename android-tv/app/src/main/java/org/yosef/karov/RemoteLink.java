@@ -33,6 +33,7 @@ public final class RemoteLink {
     private boolean authenticated = false;
     private boolean codeAttempt = false;
     private volatile boolean stopped = false;
+    private boolean credentialsRejected;
     private volatile long epoch = 0;
     private long blockedUntil = 0;
     private int failures = 0, retry = 0, inFlight = 0;
@@ -129,7 +130,11 @@ public final class RemoteLink {
     }
 
     private void connect() {
-        if (stopped || !vault.enabled() || vault.get("server").isEmpty() || socket != null) return;
+        if (stopped
+                || credentialsRejected
+                || !vault.enabled()
+                || vault.get("server").isEmpty()
+                || socket != null) return;
         if (reconnect != null) reconnect.cancel(false);
         listener.state("מתחבר לשרת…", false);
         String url =
@@ -140,7 +145,17 @@ public final class RemoteLink {
                 new Request.Builder()
                         .url(url)
                         .header("Authorization", "Bearer " + vault.get("token"))
-                        .header("X-Karov-Enrollment", vault.get("enrollment"))
+                        .header(
+                                "X-Karov-Enrollment",
+                                "pw1:"
+                                        + java.util.Base64.getUrlEncoder()
+                                                .withoutPadding()
+                                                .encodeToString(
+                                                        vault.get("enrollment")
+                                                                .getBytes(
+                                                                        java.nio.charset
+                                                                                .StandardCharsets
+                                                                                .UTF_8)))
                         .build();
         socket =
                 client.newWebSocket(
@@ -169,7 +184,34 @@ public final class RemoteLink {
                             @Override
                             public void onFailure(
                                     WebSocket ws, Throwable error, Response response) {
-                                dispatch(() -> lost(ws));
+                                dispatch(() -> {
+                                    if (ws != socket) return;
+                                    if (response != null
+                                            && (response.code() == 401 || response.code() == 403)) {
+                                        // שגיאת סיסמה דורשת תיקון בהכנה; אין לנחש אותה מחדש
+                                        // אוטומטית ולצבור חסימה.
+                                        credentialsRejected = true;
+                                        socket = null;
+                                        endSession();
+                                        listener.state(
+                                                "פרטי ההתקנה לא התקבלו. פתחו הגדרות וחיבור ובדקו את"
+                                                        + " הסיסמה",
+                                                false);
+                                    } else {
+                                        lost(ws);
+                                        if (response != null && response.code() == 429) {
+                                            if (reconnect != null) reconnect.cancel(false);
+                                            reconnect =
+                                                    worker.schedule(
+                                                            RemoteLink.this::connect,
+                                                            10,
+                                                            TimeUnit.MINUTES);
+                                            listener.state(
+                                                    "בוצעו ניסיונות רבים. ננסה שוב בעוד עשר דקות",
+                                                    false);
+                                        }
+                                    }
+                                });
                             }
 
                             @Override

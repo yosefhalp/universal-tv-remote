@@ -61,6 +61,14 @@ public final class DeviceActions {
                 LocalAdb remote = LocalAdb.get(context);
                 switch (method) {
                     case "info" -> callback.done(info(), null);
+                    case "updateInfo" ->
+                            callback.done(
+                                    org.yosef.karov.updates.UpdateEngine.get(context).info(), null);
+                    case "updateCheck", "updateInstall" ->
+                            callback.done(
+                                    org.yosef.karov.updates.UpdateEngine.get(context)
+                                            .request(method.equals("updateInstall"), false, null),
+                                    null);
                     case "apps" -> callback.done(apps(), null);
                     case "capture" -> {
                         if (MainActivity.visible) {

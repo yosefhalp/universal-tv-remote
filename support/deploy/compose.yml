@@ -4,7 +4,7 @@ services:
     build:
       context: ../..
       dockerfile: support/Dockerfile
-    image: karov-relay:1.0.1
+    image: karov-relay:1.2.2
     restart: unless-stopped
     init: true
     read_only: true
@@ -16,7 +16,8 @@ services:
       - "127.0.0.1:18788:8788"
     environment:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?יש להגדיר כתובת HTTPS קבועה}
-      ENROLLMENT_KEY_HASH: ${ENROLLMENT_KEY_HASH:?יש לספק גיבוב SHA256 של מפתח ההתקנה}
+      ENROLLMENT_KEY_HASH: ${ENROLLMENT_KEY_HASH:-}
+      ENROLLMENT_PASSWORD_VERIFIER: ${ENROLLMENT_PASSWORD_VERIFIER:-}
     volumes:
       - karov-data:/data
     logging:
