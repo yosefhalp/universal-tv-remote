@@ -38,6 +38,34 @@ public final class RemoteLink {
     private long blockedUntil = 0;
     private int failures = 0, retry = 0, inFlight = 0;
     private ScheduledFuture<?> reconnect, authenticationTimeout, pairingExpiry;
+    private ScheduledFuture<?> accountRetry;
+    private final java.util.Map<String, AccountGrant> accountGrants = new java.util.HashMap<>();
+
+    private static final class AccountGrant {
+        final Crypto.Session session;
+        final long request;
+        final boolean pairing;
+        final String controller, secret, authorizer, pairVersion;
+        boolean installed;
+        ScheduledFuture<?> timeout;
+
+        AccountGrant(
+                Crypto.Session session,
+                long request,
+                boolean pairing,
+                String controller,
+                String secret,
+                String authorizer,
+                String pairVersion) {
+            this.session = session;
+            this.request = request;
+            this.pairing = pairing;
+            this.controller = controller;
+            this.secret = secret;
+            this.authorizer = authorizer;
+            this.pairVersion = pairVersion;
+        }
+    }
 
     public RemoteLink(Vault vault, DeviceActions actions, Listener listener) {
         this.vault = vault;
@@ -171,6 +199,14 @@ public final class RemoteLink {
                                     retry = 0;
                                     listener.state("מוכן לעזרה מרחוק", false);
                                     advertisePairing();
+                                    replayAccountLinks();
+                                    if (accountRetry != null) accountRetry.cancel(false);
+                                    accountRetry =
+                                            worker.scheduleAtFixedRate(
+                                                    RemoteLink.this::replayAccountLinks,
+                                                    15,
+                                                    15,
+                                                    TimeUnit.SECONDS);
                                 });
                             }
 
@@ -236,6 +272,7 @@ public final class RemoteLink {
 
     private void lost(WebSocket ws) {
         if (ws != socket) return;
+        if (accountRetry != null) accountRetry.cancel(false);
         socket = null;
         if (pairing != null) {
             pairing.registered = false;
@@ -267,6 +304,9 @@ public final class RemoteLink {
     }
 
     private void endSession() {
+        for (AccountGrant grant : accountGrants.values())
+            if (grant.timeout != null) grant.timeout.cancel(false);
+        accountGrants.clear();
         epoch++;
         cipher = null;
         srp = null;
@@ -301,6 +341,70 @@ public final class RemoteLink {
             JSONObject value = new JSONObject(text);
             String type = value.optString("t");
             if (type.equals("pong")) return;
+            if (type.equals("account-link-checked")) {
+                String ticket = value.optString("ticket");
+                AccountGrant grant = accountGrants.get(ticket);
+                if (grant == null || grant.installed || cipher != grant.session) return;
+                try {
+                    if (!value.optBoolean("ok")
+                            || !grant.controller.equals(value.optString("controller"))
+                            || !java.security.MessageDigest.isEqual(
+                                    Crypto.bytes(grant.secret),
+                                    Crypto.bytes(value.optString("secret"))))
+                        throw new Exception("ACCOUNT_LINK_FAILED");
+                    // שומרים הרשאה רק אחרי שהשרת אימת את הכרטיס ואת המפתח ששייך לחשבון.
+                    // כך בקר חשבון אינו יכול ליצור הרשאת גישה מקומית שתעקוף חסימה או איפוס.
+                    if (grant.pairing) {
+                        vault.enroll(
+                                grant.pairVersion,
+                                grant.controller,
+                                grant.secret,
+                                value.optString("name", "חשבון משפחתי"),
+                                ticket);
+                        clearPairing();
+                    } else
+                        vault.grantAccount(
+                                grant.authorizer,
+                                grant.controller,
+                                grant.secret,
+                                value.optString("name", "חשבון משפחתי"),
+                                ticket);
+                    grant.installed = true;
+                    send(
+                            new JSONObject()
+                                    .put("t", "account-linked")
+                                    .put("ticket", ticket)
+                                    .put("controller", grant.controller));
+                } catch (Exception error) {
+                    accountGrants.remove(ticket);
+                    if (grant.timeout != null) grant.timeout.cancel(false);
+                    reply(grant.session, grant.request, null, accountError(error));
+                }
+                return;
+            }
+            if (type.equals("account-link-result")) {
+                String ticket = value.optString("ticket");
+                // תשובה חוזרת לאחר אתחול מסיימת גם אישור שאין לו כבר בקשת לקוח חיה.
+                if (value.optBoolean("ok") || "INVALID_TICKET".equals(value.optString("error"))) {
+                    try {
+                        vault.accountLinked(ticket);
+                    } catch (Exception ignored) {
+                    }
+                }
+                AccountGrant grant = accountGrants.get(ticket);
+                if (grant == null || !grant.installed) return;
+                accountGrants.remove(ticket);
+                if (grant.timeout != null) grant.timeout.cancel(false);
+                if (cipher != grant.session) return;
+                boolean ok = value.optBoolean("ok");
+                reply(
+                        grant.session,
+                        grant.request,
+                        ok ? true : null,
+                        ok ? null : "ACCOUNT_LINK_FAILED");
+                if (grant.pairing) endPairingSession(grant.session);
+                return;
+            }
             if (type.equals("pair-code")) {
                 if (pairing == null
                         || pairing.registered
@@ -492,22 +596,31 @@ public final class RemoteLink {
                     reply(session, id, null, "PAIR_ONLY");
                     return;
                 }
-                vault.enroll(
-                        pairingVersion,
-                        args.getString("controller"),
-                        args.getString("secret"),
-                        args.optString("name", "מכשיר משפחתי"));
-                reply(session, id, true, null);
-                clearPairing();
-                worker.schedule(
-                        () -> {
-                            if (cipher == session) {
-                                simple("kick");
-                                endSession();
-                            }
-                        },
-                        1000,
-                        TimeUnit.MILLISECONDS);
+                String accountTicket = args.optString("accountTicket");
+                if (!accountTicket.isEmpty()) {
+                    try {
+                        checkAccount(accountTicket, args, session, id, true);
+                    } catch (Exception error) {
+                        reply(session, id, null, accountError(error));
+                    }
+                } else {
+                    vault.enroll(
+                            pairingVersion,
+                            args.getString("controller"),
+                            args.getString("secret"),
+                            args.optString("name", "מכשיר משפחתי"));
+                    clearPairing();
+                    reply(session, id, true, null);
+                    endPairingSession(session);
+                }
+                return;
+            }
+            if (method.equals("grantAccount")) {
+                try {
+                    checkAccount(args.getString("ticket"), args, session, id, false);
+                } catch (Exception error) {
+                    reply(session, id, null, accountError(error));
+                }
                 return;
             }
             if (method.equals("controllers")) {
@@ -547,6 +660,73 @@ public final class RemoteLink {
         } catch (Exception error) {
             reject();
         }
+    }
+
+    private void endPairingSession(Crypto.Session session) {
+        worker.schedule(
+                () -> {
+                    if (cipher == session) {
+                        simple("kick");
+                        endSession();
+                    }
+                },
+                1000,
+                TimeUnit.MILLISECONDS);
+    }
+
+    private static String accountError(Exception error) {
+        return java.util.Set.of(
+                                "CONTROLLER_LIMIT",
+                                "CONTROLLER_CONFLICT",
+                                "DENIED",
+                                "STORAGE_FAILED",
+                                "ACCOUNT_LINK_BUSY",
+                                "ACCOUNT_LINK_FAILED",
+                                "PAIR_EXPIRED")
+                        .contains(String.valueOf(error.getMessage()))
+                ? error.getMessage()
+                : "BAD_ACCOUNT_LINK";
+    }
+
+    private void replayAccountLinks() {
+        if (socket == null || stopped) return;
+        try {
+            org.json.JSONArray pending = vault.accountLinks();
+            for (int i = 0; i < pending.length(); i++)
+                send(pending.getJSONObject(i).put("t", "account-linked"));
+        } catch (Exception ignored) {
+            // כשל זמני בכתיבה או בשליחה יטופל במחזור הבא; לא מוחקים אישור שלא התקבל.
+        }
+    }
+
+    private void checkAccount(
+            String ticket, JSONObject args, Crypto.Session session, long request, boolean pairing)
+            throws Exception {
+        Crypto.decode(ticket, 32);
+        String target = args.getString("controller"), secret = args.getString("secret");
+        if (!Crypto.validId(target)) throw new Exception("BAD_ID");
+        Crypto.decode(secret, 32);
+        if (accountGrants.containsKey(ticket)) throw new Exception("ACCOUNT_LINK_BUSY");
+        AccountGrant grant =
+                new AccountGrant(
+                        session, request, pairing, target, secret, controller, pairingVersion);
+        accountGrants.put(ticket, grant);
+        // אישור הקישור מגיע רק מהשרת דרך חיבור הסטרימר. אובדן תשובה אינו מוחק הרשאה שאולי כבר
+        // סונכרנה.
+        grant.timeout =
+                worker.schedule(
+                        () -> {
+                            if (accountGrants.remove(ticket) != grant || cipher != session) return;
+                            reply(session, request, null, "REQUEST_TIMEOUT");
+                            if (pairing) endPairingSession(session);
+                        },
+                        8,
+                        TimeUnit.SECONDS);
+        send(
+                new JSONObject()
+                        .put("t", "account-link-check")
+                        .put("ticket", ticket)
+                        .put("controller", target));
     }
 
     private void ready(

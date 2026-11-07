@@ -813,6 +813,17 @@ dialog p {
 .screen:fullscreen img {
   object-fit: contain;
 }
+/* גם כשסרט מוגן מחזיר תמונה שחורה, כפתורי הניגון נשארים זמינים בשורה נפרדת. */
+.fullscreen-media { display: none; }
+.screen:fullscreen { flex-direction: column; }
+.screen:fullscreen img { flex: 1; min-height: 0; height: calc(100% - 80px); }
+.screen:fullscreen .screen-caption { bottom: 80px; }
+.screen:fullscreen .fullscreen-media {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  flex: 0 0 80px; width: 100%; background: #111216;
+  cursor: auto; touch-action: manipulation; z-index: 3;
+}
+.fullscreen-media button { width: 64px; height: 48px; display: grid; place-items: center; }
 @media (min-width: 1600px) {
   main {
     padding: 0 56px;
@@ -1131,3 +1142,13 @@ dialog p {
   margin: 10px 0;
   font-size: 12px;
 }
+/* חלון החשבון זמין גם בזמן עזרה, בלי לשנות את מבנה השלט והמדיה. */
+#account-dialog, #account-reset-dialog { width: min(560px, calc(100vw - 32px)); max-height: 85dvh; overflow: auto; }
+.account-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#account-dialog input, #account-reset-dialog input { width: 100%; box-sizing: border-box; margin-bottom: 14px; }
+#account-dialog label, #account-reset-dialog label { display: block; margin-bottom: 6px; }
+.account-user-row { border-top: 1px solid #343640; padding: 12px 0; }
+.account-user-row button { margin: 4px; }
+#account-message, #account-reset-message { min-height: 1.5em; }
+#account-open { white-space: nowrap; }
+@media (max-width: 600px) { .top { flex-wrap: wrap; } #account-open { font-size: 12px; padding: 8px 12px; } }

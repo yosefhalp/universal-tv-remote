@@ -498,6 +498,14 @@ input[type="checkbox"] {
 .daily .button {
   margin-top: 15px;
 }
+.movie-steps {
+  padding-inline-start: 24px;
+  color: #c5c7cc;
+  line-height: 1.7;
+}
+.movie-steps li + li {
+  margin-top: 14px;
+}
 .daily-card {
   border: 1px solid #55575d;
   border-radius: 12px;
@@ -731,6 +739,7 @@ input[type="checkbox"] {
   }
   .hero p,
   .daily p,
+  .movie-steps,
   .hero .eyebrow {
     color: #444;
   }
@@ -776,4 +785,28 @@ input[type="checkbox"] {
   .footer {
     padding-block: 20px;
   }
+}
+.icon-key {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 18px;
+  margin: 26px 0;
+}
+.icon-key li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  line-height: 1.7;
+}
+.icon-key svg {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  margin-top: 3px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }

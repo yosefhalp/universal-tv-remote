@@ -40,6 +40,9 @@ public final class MainActivity extends ComponentActivity {
     private final ExecutorService tasks = Executors.newSingleThreadExecutor();
     private final ArrayList<View> controls = new ArrayList<>();
     private PhoneVault vault;
+    private AccountClient accounts;
+    private volatile boolean accountBusy;
+    private boolean accountSyncSupported;
     private JSONObject selected;
     private RemoteClient connection;
     private volatile RemoteClient pairingConnection;
@@ -88,8 +91,10 @@ public final class MainActivity extends ComponentActivity {
         super.onCreate(state);
         try {
             vault = new PhoneVault(this);
+            accounts = new AccountClient(vault);
             relativeMode = getPreferences(MODE_PRIVATE).getBoolean("pointerRelative", false);
             selected = vault.get(vault.last());
+            if (selected == null) selected = vault.accountDevice(vault.last());
             render();
         } catch (Exception error) {
             TextView failure =
@@ -119,6 +124,7 @@ public final class MainActivity extends ComponentActivity {
         resumed = true;
         if (selected != null && connection == null) connect();
         main.post(staleFrame);
+        refreshAccount(false);
     }
 
     @Override
@@ -139,6 +145,7 @@ public final class MainActivity extends ComponentActivity {
     protected void onDestroy() {
         destroyed = true;
         tasks.shutdownNow();
+        if (accounts != null) accounts.close();
         super.onDestroy();
     }
 
@@ -269,8 +276,14 @@ public final class MainActivity extends ComponentActivity {
     private void renderHome() {
         add(text("המסכים שלי", 32, Color.WHITE), 4);
         add(text("נכנסים לטלוויזיה. עוזרים מכל מקום.", 16, MUTED), 8);
+        add(button("החשבון שלי · כניסה וסנכרון", false, this::accountDialog), 16);
         try {
             JSONArray devices = vault.devices();
+            JSONArray cloud = vault.accountDevices();
+            for (int i = 0; i < cloud.length(); i++) {
+                JSONObject item = cloud.getJSONObject(i);
+                if (vault.get(item.getString("device")) == null) devices.put(item);
+            }
             if (devices.length() == 0) {
                 LinearLayout empty = new LinearLayout(this);
                 empty.setOrientation(LinearLayout.VERTICAL);
@@ -674,6 +687,7 @@ public final class MainActivity extends ComponentActivity {
         if (pairBusy) return;
         try {
             selected = vault.get(id);
+            if (selected == null) selected = vault.accountDevice(id);
             vault.last(id);
             paused = false;
             reconnects = 0;
@@ -732,6 +746,7 @@ public final class MainActivity extends ComponentActivity {
                         target.optString("controller"),
                         target.optString("secret"),
                         null,
+                        target.optBoolean("account") ? accountToken() : null,
                         reason ->
                                 main.post(() -> {
                                     if (resumed
@@ -751,6 +766,7 @@ public final class MainActivity extends ComponentActivity {
                             }
                             reconnects = 0;
                             pointerSupported = info.optBoolean("pointer");
+                            accountSyncSupported = info.optBoolean("accountSync");
                             setConnected(true);
                             refreshPointerMode();
                             status.setText("● מחוברים לטלוויזיה");
@@ -795,10 +811,16 @@ public final class MainActivity extends ComponentActivity {
         if (connection != active) return;
         stopConnection();
         String reason = reason(error);
+        if (reason.equals("ACCOUNT_DENIED")) {
+            home();
+            refreshAccount(true);
+            return;
+        }
         status.setText(explain(error));
         status.setTextColor(MUTED);
         boolean retry =
-                !Arrays.asList("DENIED", "EXPIRED", "BLOCKED", "BAD_IDENTITY").contains(reason)
+                !Arrays.asList("DENIED", "EXPIRED", "BLOCKED", "BAD_IDENTITY", "ACCOUNT_DENIED")
+                                .contains(reason)
                         && (!reason.equals("BUSY") || reconnects < 3);
         if (retry && resumed && selected != null) {
             int delay = Math.min(15000, 1000 << Math.min(reconnects++, 4));
@@ -965,7 +987,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void pair(Pairing supplied, String code) {
-        if (pairBusy) return;
+        if (pairBusy || accountBusy) return;
         pairBusy = true;
         int attempt = ++pairEpoch;
         render();
@@ -973,6 +995,7 @@ public final class MainActivity extends ComponentActivity {
             RemoteClient temporary = null;
             JSONObject record = null;
             boolean enrollmentSent = false;
+            boolean accountPair = false;
             try {
                 Pairing pairing = supplied;
                 if (pairing == null) {
@@ -1030,13 +1053,32 @@ public final class MainActivity extends ComponentActivity {
                     });
                     return;
                 }
+                JSONObject prepared = null;
+                accountPair = accountToken() != null;
+                if (accountPair) {
+                    prepared = accounts.prepare(pairing.device, pairing.name);
+                    if (prepared.optBoolean("linked")) {
+                        accounts.refresh();
+                        String device = pairing.device;
+                        main.post(() -> {
+                            if (!destroyed && resumed && pairEpoch == attempt) {
+                                pairBusy = false;
+                                select(device);
+                            }
+                        });
+                        return;
+                    }
+                }
                 temporary =
                         new RemoteClient(
                                 pairing.device, "pair", pairing.secret, pairing.code, reason -> {});
                 pairingConnection = temporary;
-                temporary.connect().get(15, TimeUnit.SECONDS);
+                JSONObject pairingInfo = temporary.connect().get(15, TimeUnit.SECONDS);
+                if (accountPair && !pairingInfo.optBoolean("accountSync"))
+                    throw new Exception("ACCOUNT_UPDATE_REQUIRED");
                 if (!resumed || pairEpoch != attempt) throw new Exception("CANCELLED");
-                String id = Crypto.id(), secret = Crypto.secret();
+                String id = accountPair ? prepared.getString("controller") : Crypto.id();
+                String secret = accountPair ? prepared.getString("secret") : Crypto.secret();
                 record =
                         new JSONObject()
                                 .put("device", pairing.device)
@@ -1044,20 +1086,34 @@ public final class MainActivity extends ComponentActivity {
                                 .put("secret", secret)
                                 .put("name", pairing.name)
                                 .put("pending", true);
-                // כותבים לכספת לפני השליחה: אובדן תשובת הרשמה לא יגרום לאובדן המפתח היחיד.
-                vault.put(record);
+                // זיווג מקומי נשמר לפני שליחה. הרשאת חשבון כבר נשמרה בהכנה בשרת ונשלפת בסנכרון.
+                if (!accountPair) vault.put(record);
+                JSONObject enrollment =
+                        new JSONObject()
+                                .put("controller", id)
+                                .put("secret", secret)
+                                .put("name", accountPair ? "חשבון קרוב" : "אפליקציית קרוב בטלפון");
+                if (accountPair) enrollment.put("accountTicket", prepared.getString("ticket"));
                 enrollmentSent = true;
-                temporary
-                        .call(
-                                "enroll",
-                                new JSONObject()
-                                        .put("controller", id)
-                                        .put("secret", secret)
-                                        .put("name", "אפליקציית קרוב בטלפון"),
-                                10000)
-                        .get(12, TimeUnit.SECONDS);
-                record.put("pending", false);
-                vault.put(record);
+                Exception enrollmentFailure = null;
+                try {
+                    temporary.call("enroll", enrollment, 12000).get(14, TimeUnit.SECONDS);
+                } catch (Exception error) {
+                    enrollmentFailure = error;
+                }
+                if (accountPair) {
+                    accounts.refresh();
+                    if (vault.accountDevice(pairing.device) == null)
+                        throw enrollmentFailure == null
+                                ? new Exception("ACCOUNT_LINK_FAILED")
+                                : enrollmentFailure;
+                } else {
+                    if (enrollmentFailure != null) throw enrollmentFailure;
+                    record.put("pending", false);
+                    vault.put(record);
+                }
+                temporary.close();
+                temporary = null;
                 String device = pairing.device;
                 main.post(() -> {
                     if (!destroyed && resumed && pairEpoch == attempt) {
@@ -1067,6 +1123,7 @@ public final class MainActivity extends ComponentActivity {
                 });
             } catch (Exception error) {
                 if (record != null
+                        && !accountPair
                         && (!enrollmentSent
                                 || !Arrays.asList(
                                                 "DISCONNECTED",
@@ -1163,7 +1220,28 @@ public final class MainActivity extends ComponentActivity {
         fullScreen.allowed(connected && pointerSupported && !paused);
         fullScreen.setScaleType(ImageView.ScaleType.FIT_CENTER);
         fullScreen.setImageBitmap(frame);
-        box.addView(fullScreen, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams imageArea = new FrameLayout.LayoutParams(-1, -1);
+        imageArea.bottomMargin = dp(64);
+        box.addView(fullScreen, imageArea);
+        // Android עלול להחזיר תמונה שחורה בלי שגיאה; הניגון נשאר נגיש גם במסך מלא.
+        LinearLayout playback = row();
+        playback.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        ArrayList<View> playbackControls = new ArrayList<>();
+        for (String[] item :
+                new String[][] {
+                    {"rewind", "הרצה לאחור", "REWIND"},
+                    {"playPause", "ניגון או השהיה", "PLAY_PAUSE"},
+                    {"forward", "הרצה קדימה", "FAST_FORWARD"}
+                }) {
+            ImageButton button = icon(item[0], item[1], () -> key(item[2]));
+            control(button);
+            playbackControls.add(button);
+            iconCell(playback, button, 48);
+        }
+        FrameLayout.LayoutParams playbackArea =
+                new FrameLayout.LayoutParams(-1, dp(56), Gravity.BOTTOM);
+        playbackArea.setMargins(dp(16), 0, dp(16), dp(4));
+        box.addView(playback, playbackArea);
         ImageButton close = icon("close", "סגירת מסך מלא", dialog::dismiss);
         FrameLayout.LayoutParams p =
                 new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP | Gravity.END);
@@ -1171,6 +1249,7 @@ public final class MainActivity extends ComponentActivity {
         box.addView(close, p);
         dialog.setContentView(box);
         dialog.setOnDismissListener(d -> {
+            controls.removeAll(playbackControls);
             if (screen != null) screen.copyPositionFrom(fullScreen);
             fullScreen = null;
             fullDialog = null;
@@ -1190,14 +1269,519 @@ public final class MainActivity extends ComponentActivity {
                 });
     }
 
+    private interface AccountWork {
+        void run() throws Exception;
+    }
+
+    private String accountToken() {
+        try {
+            return accounts.token();
+        } catch (Exception error) {
+            return null;
+        }
+    }
+
+    // כל עבודת הרשת בתור הרקע; כישלון רשת משאיר את המטמון המוצפן זמין.
+    private void accountWork(AccountWork work, Runnable success) {
+        if (accountBusy || pairBusy || destroyed) return;
+        accountBusy = true;
+        tasks.execute(() -> {
+            Exception failure = null;
+            try {
+                work.run();
+            } catch (Exception error) {
+                failure = error;
+            }
+            Exception result = failure;
+            // מעבר לרקע מסיר callbacks של המסך, ולכן מצב העבודה משתחרר גם בלי callback לתצוגה.
+            accountBusy = false;
+            main.post(() -> {
+                if (destroyed) return;
+                reconcileAccount();
+                if (result != null) toast(explain(result));
+                else if (resumed) success.run();
+            });
+        });
+    }
+
+    private void reconcileAccount() {
+        try {
+            JSONObject session = vault.accountSession();
+            if (selected != null && selected.optBoolean("account")) {
+                JSONObject current = vault.accountDevice(selected.optString("device"));
+                if (session == null
+                        || current == null
+                        || !current.optString("controller")
+                                .equals(selected.optString("controller"))) home();
+            }
+            if (selected == null && resumed) render();
+        } catch (Exception error) {
+            toast(explain(error));
+        }
+    }
+
+    private void refreshAccount(boolean show) {
+        if (accounts == null || accountToken() == null || accountBusy) return;
+        accountWork(
+                () -> accounts.refresh(),
+                () -> {
+                    if (show) accountDialog();
+                    else {
+                        try {
+                            JSONObject session = vault.accountSession();
+                            if (session != null
+                                    && session.getJSONObject("user")
+                                            .optBoolean("mustChangePassword")) passwordDialog(true);
+                        } catch (Exception error) {
+                            toast(explain(error));
+                        }
+                    }
+                });
+    }
+
+    private LinearLayout accountForm() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        form.setPadding(dp(24), dp(8), dp(24), dp(8));
+        return form;
+    }
+
+    private EditText accountField(LinearLayout form, String hint, boolean password) {
+        EditText field = new EditText(this);
+        field.setHint(hint);
+        field.setSingleLine(true);
+        field.setInputType(
+                InputType.TYPE_CLASS_TEXT
+                        | (password
+                                ? InputType.TYPE_TEXT_VARIATION_PASSWORD
+                                : InputType.TYPE_TEXT_VARIATION_NORMAL));
+        field.setFilters(new InputFilter[] {new InputFilter.LengthFilter(password ? 128 : 32)});
+        form.addView(field, new LinearLayout.LayoutParams(-1, dp(56)));
+        return field;
+    }
+
+    private void accountDialog() {
+        if (accountBusy || pairBusy) {
+            toast("ממתינים לסיום הפעולה…");
+            return;
+        }
+        try {
+            JSONObject session = vault.accountSession();
+            if (session == null) {
+                new AlertDialog.Builder(this)
+                        .setTitle("החשבון שלי")
+                        .setMessage("הטלוויזיות בחשבון זמינות בכל טלפון וטאבלט לאחר הכניסה.")
+                        .setPositiveButton("כניסה", (d, w) -> credentialsDialog(false, false))
+                        .setNeutralButton(
+                                "הרשמה",
+                                (d, w) -> {
+                                    final boolean[] setup = {false};
+                                    accountWork(
+                                            () ->
+                                                    setup[0] =
+                                                            accounts.request(
+                                                                            "GET", "/status", null,
+                                                                            false)
+                                                                    .getBoolean("setupRequired"),
+                                            () -> credentialsDialog(true, setup[0]));
+                                })
+                        .setNegativeButton("סגירה", null)
+                        .show();
+                return;
+            }
+            JSONObject user = session.getJSONObject("user");
+            if (user.optBoolean("mustChangePassword")) {
+                passwordDialog(true);
+                return;
+            }
+            boolean admin = user.optString("role").equals("admin");
+            ArrayList<String> items =
+                    new ArrayList<>(
+                            Arrays.asList("סנכרון טלוויזיות", "הטלוויזיות בחשבון", "החלפת סיסמה"));
+            if (admin) items.add("ניהול משתמשים");
+            items.add("יציאה מהחשבון");
+            new AlertDialog.Builder(this)
+                    .setTitle("החשבון של " + user.optString("username"))
+                    .setItems(
+                            items.toArray(new String[0]),
+                            (d, which) -> {
+                                String action = items.get(which);
+                                if (action.equals("סנכרון טלוויזיות")) refreshAccount(true);
+                                else if (action.equals("הטלוויזיות בחשבון")) accountTelevisions();
+                                else if (action.equals("החלפת סיסמה")) passwordDialog(false);
+                                else if (action.equals("ניהול משתמשים")) adminUsers();
+                                else
+                                    accountWork(
+                                            () -> accounts.logout(),
+                                            () -> {
+                                                reconcileAccount();
+                                                accountDialog();
+                                            });
+                            })
+                    .setNegativeButton("סגירה", null)
+                    .show();
+        } catch (Exception error) {
+            toast(explain(error));
+        }
+    }
+
+    private void credentialsDialog(boolean register, boolean setup) {
+        LinearLayout form = accountForm();
+        EditText username = accountField(form, "דוא״ל או שם משתמש", false);
+        username.setInputType(
+                android.text.InputType.TYPE_CLASS_TEXT
+                        | android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        username.setTextDirection(View.TEXT_DIRECTION_LTR);
+        EditText password = accountField(form, "סיסמה · לפחות 8 תווים", true);
+        EditText installation =
+                setup ? accountField(form, "סיסמת ההתקנה ליצירת מנהל ראשון", true) : null;
+        AlertDialog dialog =
+                new AlertDialog.Builder(this)
+                        .setTitle(setup ? "יצירת מנהל ראשון" : register ? "הרשמה" : "כניסה")
+                        .setView(form)
+                        .setPositiveButton(register ? "הרשמה" : "כניסה", null)
+                        .setNegativeButton("ביטול", null)
+                        .create();
+        dialog.setOnShowListener(d ->
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                        .setOnClickListener(v -> {
+                            if (accountBusy) return;
+                            JSONObject input = object("username", username.getText().toString());
+                            try {
+                                input.put("password", password.getText().toString());
+                                if (installation != null)
+                                    input.put(
+                                            "installationPassword",
+                                            installation.getText().toString());
+                            } catch (Exception error) {
+                                toast(explain(error));
+                                return;
+                            }
+                            accountWork(
+                                    () -> accounts.authenticate(register, input),
+                                    () -> {
+                                        dialog.dismiss();
+                                        accountDialog();
+                                    });
+                        }));
+        dialog.show();
+    }
+
+    private void accountTelevisions() {
+        try {
+            JSONArray devices = vault.accountDevices();
+            String[] names = new String[devices.length()];
+            for (int i = 0; i < names.length; i++)
+                names[i] = devices.getJSONObject(i).optString("name");
+            new AlertDialog.Builder(this)
+                    .setTitle("הטלוויזיות בחשבון")
+                    .setItems(
+                            names,
+                            (d, which) -> {
+                                JSONObject device = devices.optJSONObject(which);
+                                new AlertDialog.Builder(this)
+                                        .setTitle(device.optString("name"))
+                                        .setPositiveButton(
+                                                "התחברות",
+                                                (a, b) -> {
+                                                    try {
+                                                        stopConnection();
+                                                        selected =
+                                                                vault.accountDevice(
+                                                                        device.getString("device"));
+                                                        vault.last(device.getString("device"));
+                                                        paused = false;
+                                                        reconnects = 0;
+                                                        render();
+                                                        if (resumed) connect();
+                                                    } catch (Exception error) {
+                                                        toast(explain(error));
+                                                    }
+                                                })
+                                        .setNeutralButton(
+                                                "הסרה מהחשבון",
+                                                (a, b) ->
+                                                        new AlertDialog.Builder(this)
+                                                                .setTitle(
+                                                                        "להסיר מכל המכשירים"
+                                                                            + " שבחשבון?")
+                                                                .setMessage(
+                                                                        "זיווגים מקומיים נשארים"
+                                                                            + " שמורים בטלפונים"
+                                                                            + " שבהם נוצרו.")
+                                                                .setPositiveButton(
+                                                                        "הסרה",
+                                                                        (c, e) ->
+                                                                                accountWork(
+                                                                                        () -> {
+                                                                                            accounts
+                                                                                                    .request(
+                                                                                                            "DELETE",
+                                                                                                            "/devices/"
+                                                                                                                    + device
+                                                                                                                            .getString(
+                                                                                                                                    "device"),
+                                                                                                            null,
+                                                                                                            true);
+                                                                                            accounts
+                                                                                                    .refresh();
+                                                                                        },
+                                                                                        this
+                                                                                                ::accountTelevisions))
+                                                                .setNegativeButton("ביטול", null)
+                                                                .show())
+                                        .setNegativeButton("סגירה", null)
+                                        .show();
+                            })
+                    .setNegativeButton("סגירה", null)
+                    .show();
+        } catch (Exception error) {
+            toast(explain(error));
+        }
+    }
+
+    private void passwordDialog(boolean forced) {
+        LinearLayout form = accountForm();
+        if (forced) form.addView(text("יש לבחור סיסמה אישית לפני הצגת הטלוויזיות.", 16, MUTED));
+        EditText current = accountField(form, "הסיסמה הנוכחית", true);
+        EditText next = accountField(form, "סיסמה חדשה · לפחות 8 תווים", true);
+        EditText confirmation = accountField(form, "אימות הסיסמה החדשה", true);
+        AlertDialog dialog =
+                new AlertDialog.Builder(this)
+                        .setTitle("החלפת סיסמה")
+                        .setView(form)
+                        .setPositiveButton("שמירת סיסמה", null)
+                        .setNegativeButton("סגירה", null)
+                        .setNeutralButton(
+                                "יציאה מהחשבון",
+                                (d, w) -> accountWork(() -> accounts.logout(), this::accountDialog))
+                        .create();
+        dialog.setOnShowListener(d ->
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                        .setOnClickListener(v -> {
+                            if (!next.getText()
+                                    .toString()
+                                    .equals(confirmation.getText().toString())) {
+                                confirmation.setError("הסיסמאות אינן זהות");
+                                return;
+                            }
+                            String oldPassword = current.getText().toString(),
+                                    newPassword = next.getText().toString();
+                            accountWork(
+                                    () -> accounts.password(oldPassword, newPassword),
+                                    () -> {
+                                        dialog.dismiss();
+                                        accountDialog();
+                                    });
+                        }));
+        dialog.show();
+    }
+
+    private void adminUsers() {
+        final JSONArray[] users = {null};
+        accountWork(
+                () ->
+                        users[0] =
+                                accounts.request("GET", "/admin/users", null, true)
+                                        .getJSONArray("users"),
+                () -> {
+                    String[] names = new String[users[0].length()];
+                    for (int i = 0; i < names.length; i++) {
+                        JSONObject user = users[0].optJSONObject(i);
+                        names[i] =
+                                user.optString("username")
+                                        + (user.optBoolean("disabled") ? " · חסום" : "")
+                                        + (user.optString("role").equals("admin") ? " · מנהל" : "");
+                    }
+                    new AlertDialog.Builder(this)
+                            .setTitle("ניהול משתמשים")
+                            .setItems(
+                                    names,
+                                    (d, which) -> {
+                                        JSONObject user = users[0].optJSONObject(which);
+                                        try {
+                                            if (user.optString("id")
+                                                    .equals(
+                                                            vault.accountSession()
+                                                                    .getJSONObject("user")
+                                                                    .optString("id"))) {
+                                                passwordDialog(false);
+                                                return;
+                                            }
+                                        } catch (Exception error) {
+                                            toast(explain(error));
+                                            return;
+                                        }
+                                        new AlertDialog.Builder(this)
+                                                .setTitle(user.optString("username"))
+                                                .setItems(
+                                                        new String[] {
+                                                            "איפוס סיסמה",
+                                                            user.optBoolean("disabled")
+                                                                    ? "הפעלת המשתמש"
+                                                                    : "חסימת המשתמש"
+                                                        },
+                                                        (a, action) -> {
+                                                            if (action == 0) resetUser(user);
+                                                            else if (user.optString("role")
+                                                                    .equals("admin"))
+                                                                toast("לא ניתן לחסום מנהל");
+                                                            else
+                                                                new AlertDialog.Builder(this)
+                                                                        .setTitle(
+                                                                                "לעדכן את מצב"
+                                                                                    + " המשתמש?")
+                                                                        .setMessage(
+                                                                                user.optString(
+                                                                                        "username"))
+                                                                        .setPositiveButton(
+                                                                                "אישור",
+                                                                                (b, c) ->
+                                                                                        accountWork(
+                                                                                                () ->
+                                                                                                        accounts
+                                                                                                                .request(
+                                                                                                                        "POST",
+                                                                                                                        "/admin/users/"
+                                                                                                                                + user
+                                                                                                                                        .getString(
+                                                                                                                                                "id")
+                                                                                                                                + "/state",
+                                                                                                                        object(
+                                                                                                                                "disabled",
+                                                                                                                                !user
+                                                                                                                                        .optBoolean(
+                                                                                                                                                "disabled")),
+                                                                                                                        true),
+                                                                                                this
+                                                                                                        ::adminUsers))
+                                                                        .setNegativeButton(
+                                                                                "ביטול", null)
+                                                                        .show();
+                                                        })
+                                                .setNegativeButton("סגירה", null)
+                                                .show();
+                                    })
+                            .setNegativeButton("סגירה", null)
+                            .show();
+                });
+    }
+
+    private void resetUser(JSONObject user) {
+        LinearLayout form = accountForm();
+        EditText password = accountField(form, "סיסמה זמנית · לפחות 8 תווים", true);
+        AlertDialog dialog =
+                new AlertDialog.Builder(this)
+                        .setTitle("איפוס סיסמת " + user.optString("username"))
+                        .setMessage("המשתמש ינותק ויחויב להחליף את הסיסמה בכניסה הבאה.")
+                        .setView(form)
+                        .setPositiveButton("איפוס", null)
+                        .setNegativeButton("ביטול", null)
+                        .create();
+        dialog.setOnShowListener(d ->
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                        .setOnClickListener(v -> {
+                            String temporary = password.getText().toString();
+                            accountWork(
+                                    () ->
+                                            accounts.request(
+                                                    "POST",
+                                                    "/admin/users/"
+                                                            + user.getString("id")
+                                                            + "/reset",
+                                                    object("password", temporary),
+                                                    true),
+                                    () -> {
+                                        dialog.dismiss();
+                                        adminUsers();
+                                    });
+                        }));
+        dialog.show();
+    }
+
+    private void syncTelevision() {
+        if (selected == null || !connected || connection == null) {
+            toast("מתחברים קודם לטלוויזיה");
+            return;
+        }
+        if (accountToken() == null) {
+            accountDialog();
+            return;
+        }
+        if (selected.optBoolean("account")) {
+            refreshAccount(true);
+            return;
+        }
+        if (!accountSyncSupported) {
+            toast("יש לעדכן את קרוב בסטרימר כדי לסנכרן לחשבון. הזיווג המקומי נשמר.");
+            return;
+        }
+        JSONObject target = selected;
+        RemoteClient active = connection;
+        new AlertDialog.Builder(this)
+                .setTitle("סנכרון הטלוויזיה לחשבון")
+                .setMessage("הטלוויזיה תהיה זמינה בכל טלפון וטאבלט המחוברים לחשבון שלך.")
+                .setPositiveButton(
+                        "סנכרון",
+                        (d, w) ->
+                                accountWork(
+                                        () -> {
+                                            JSONObject prepared =
+                                                    accounts.prepare(
+                                                            target.getString("device"),
+                                                            target.getString("name"));
+                                            if (!prepared.optBoolean("linked")) {
+                                                Exception grantFailure = null;
+                                                try {
+                                                    active.call(
+                                                                    "grantAccount",
+                                                                    new JSONObject()
+                                                                            .put(
+                                                                                    "ticket",
+                                                                                    prepared
+                                                                                            .getString(
+                                                                                                    "ticket"))
+                                                                            .put(
+                                                                                    "controller",
+                                                                                    prepared
+                                                                                            .getString(
+                                                                                                    "controller"))
+                                                                            .put(
+                                                                                    "secret",
+                                                                                    prepared
+                                                                                            .getString(
+                                                                                                    "secret"))
+                                                                            .put(
+                                                                                    "name",
+                                                                                    "חשבון קרוב"),
+                                                                    12000)
+                                                            .get(14, TimeUnit.SECONDS);
+                                                } catch (Exception error) {
+                                                    grantFailure = error;
+                                                }
+                                                accounts.refresh();
+                                                if (vault.accountDevice(target.getString("device"))
+                                                        == null)
+                                                    throw grantFailure == null
+                                                            ? new Exception("ACCOUNT_LINK_FAILED")
+                                                            : grantFailure;
+                                            } else accounts.refresh();
+                                        },
+                                        () -> toast("הטלוויזיה מסונכרנת לחשבון")))
+                .setNegativeButton("ביטול", null)
+                .show();
+    }
+
     private void options() {
         if (selected == null) {
             new AlertDialog.Builder(this)
                     .setTitle("אפשרויות")
                     .setItems(
-                            new String[] {"עדכוני האפליקציה בטלפון", "מדריך התקנה"},
+                            new String[] {"החשבון שלי", "עדכוני האפליקציה בטלפון", "מדריך התקנה"},
                             (d, which) -> {
-                                if (which == 0) phoneUpdates();
+                                if (which == 0) accountDialog();
+                                else if (which == 1) phoneUpdates();
                                 else guide();
                             })
                     .show();
@@ -1215,7 +1799,9 @@ public final class MainActivity extends ComponentActivity {
             "הגדרות הטלוויזיה",
             "הרצה לאחור",
             "הרצה קדימה",
-            paused ? "חידוש תמונה" : "השהיית תמונה"
+            paused ? "חידוש תמונה" : "השהיית תמונה",
+            "החשבון שלי",
+            "סנכרון הטלוויזיה לחשבון"
         };
         new AlertDialog.Builder(this)
                 .setTitle("אפשרויות")
@@ -1223,6 +1809,8 @@ public final class MainActivity extends ComponentActivity {
                         items,
                         (d, which) -> {
                             switch (which) {
+                                case 12 -> accountDialog();
+                                case 13 -> syncTelevision();
                                 case 0 -> home();
                                 case 1 -> controllers();
                                 case 2 -> action("requestCapture", new JSONObject());
@@ -1416,6 +2004,35 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void forget(String id, String name) {
+        try {
+            if (vault.get(id) == null && vault.accountDevice(id) != null) {
+                new AlertDialog.Builder(this)
+                        .setTitle("להסיר מהחשבון?")
+                        .setMessage(name + " יוסר מכל הטלפונים והטאבלטים המחוברים לחשבון.")
+                        .setPositiveButton(
+                                "הסרה",
+                                (d, w) ->
+                                        accountWork(
+                                                () -> {
+                                                    accounts.request(
+                                                            "DELETE", "/devices/" + id, null, true);
+                                                    accounts.refresh();
+                                                },
+                                                () -> {
+                                                    if (selected != null
+                                                            && id.equals(
+                                                                    selected.optString("device")))
+                                                        home();
+                                                    else render();
+                                                }))
+                        .setNegativeButton("ביטול", null)
+                        .show();
+                return;
+            }
+        } catch (Exception error) {
+            toast(explain(error));
+            return;
+        }
         new AlertDialog.Builder(this)
                 .setTitle("להסיר את " + name + "?")
                 .setMessage(
@@ -1453,6 +2070,23 @@ public final class MainActivity extends ComponentActivity {
 
     private static String explain(Throwable error) {
         return switch (reason(error)) {
+            case "ACCOUNT_UNAUTHORIZED", "ACCOUNT_DENIED", "UNAUTHORIZED", "INVALID_CREDENTIALS" ->
+                    "הכניסה לחשבון אינה תקפה. יש להיכנס מחדש.";
+            case "ACCOUNT_UPDATE_REQUIRED" -> "יש לעדכן את קרוב בסטרימר לפני חיבור לחשבון.";
+            case "ACCOUNT_LINK_FAILED" -> "הטלוויזיה טרם נוספה לחשבון. נסו לסנכרן שוב.";
+            case "MUST_CHANGE_PASSWORD", "PASSWORD_CHANGE_REQUIRED" ->
+                    "יש להחליף את הסיסמה לפני שימוש בחשבון.";
+            case "USERNAME_TAKEN", "USERNAME_EXISTS" -> "שם המשתמש כבר קיים. בחרו שם אחר.";
+            case "BAD_USERNAME", "INVALID_USERNAME" ->
+                    "יש להזין כתובת דוא״ל תקינה או שם משתמש באורך 3 עד 32 תווים.";
+            case "BAD_PASSWORD", "INVALID_PASSWORD" -> "הסיסמה צריכה להכיל 8 עד 128 תווים.";
+            case "INSTALLATION_REQUIRED",
+                    "INSTALLATION_PASSWORD_REQUIRED",
+                    "BOOTSTRAP_DENIED",
+                    "INVALID_INSTALLATION_PASSWORD" ->
+                    "יש להזין את סיסמת ההתקנה כדי ליצור מנהל ראשון.";
+            case "LIMIT", "RATE_LIMITED", "TOO_MANY_REQUESTS" ->
+                    "בוצעו יותר מדי ניסיונות. המתינו מעט ונסו שוב.";
             case "POINTER_BUSY" -> "המחווה הקודמת מסתיימת. נסו שוב בעוד רגע.";
             case "POINTER_CANCELLED" -> "Android הפסיק את המחווה. אפשר לנסות שוב.";
             case "STALE_GEOMETRY" -> "המסך שינה כיוון או גודל. המתינו לתמונה החדשה.";

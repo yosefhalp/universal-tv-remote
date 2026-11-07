@@ -150,6 +150,12 @@ public final class Vault {
 
     public synchronized void enroll(String pairingVersion, String id, String secret, String name)
             throws Exception {
+        enroll(pairingVersion, id, secret, name, null);
+    }
+
+    public synchronized void enroll(
+            String pairingVersion, String id, String secret, String name, String accountTicket)
+            throws Exception {
         // הבדיקה והכתיבה באותה נעילה: סשן ישן אינו יכול להשתמש בחלון זיווג חדש שנפתח במקביל.
         if (pairingVersion.isEmpty() || !pairingVersion.equals(secretFor("pair")))
             throw new Exception("PAIR_EXPIRED");
@@ -158,14 +164,23 @@ public final class Vault {
         JSONObject controllers = data.getJSONObject("controllers");
         if (controllers.length() >= 8 || controllers.has(id))
             throw new Exception("CONTROLLER_LIMIT");
-        controllers.put(
-                id,
-                new JSONObject()
-                        .put("name", name.substring(0, Math.min(name.length(), 40)))
-                        .put("secret", secret));
+        JSONObject previous = data;
+        data = new JSONObject(data.toString());
+        data.getJSONObject("controllers")
+                .put(
+                        id,
+                        new JSONObject()
+                                .put("name", name.substring(0, Math.min(name.length(), 40)))
+                                .put("secret", secret));
         data.remove("pairSecret");
         data.remove("pairExpires");
-        save();
+        try {
+            queueAccountLink(id, accountTicket);
+            save();
+        } catch (Exception error) {
+            data = previous;
+            throw error;
+        }
     }
 
     public synchronized JSONArray controllers() throws Exception {
@@ -181,8 +196,105 @@ public final class Vault {
         return list;
     }
 
+    public synchronized void grantAccount(
+            String authorizingController, String id, String secret, String name) throws Exception {
+        grantAccount(authorizingController, id, secret, name, null);
+    }
+
+    public synchronized void grantAccount(
+            String authorizingController,
+            String id,
+            String secret,
+            String name,
+            String accountTicket)
+            throws Exception {
+        // רק בקר שכבר שמור רשאי לצרף את החשבון. הבדיקה והכתיבה נעשות באותה נעילה גם אם הגישה בוטלה
+        // במקביל.
+        if (!Crypto.validId(authorizingController) || secretFor(authorizingController).isEmpty())
+            throw new Exception("DENIED");
+        if (!Crypto.validId(id)) throw new Exception("BAD_ID");
+        Crypto.decode(secret, 32);
+        JSONObject current = data.getJSONObject("controllers");
+        JSONObject existing = current.optJSONObject(id);
+        if (existing != null) {
+            if (!java.security.MessageDigest.isEqual(
+                    Crypto.bytes(existing.getString("secret")), Crypto.bytes(secret)))
+                throw new Exception("CONTROLLER_CONFLICT");
+            if (accountTicket == null) return;
+        }
+        if (existing == null && current.length() >= 8) throw new Exception("CONTROLLER_LIMIT");
+        JSONObject previous = data;
+        JSONObject next = new JSONObject(data.toString());
+        next.getJSONObject("controllers")
+                .put(
+                        id,
+                        new JSONObject()
+                                .put("name", name.substring(0, Math.min(name.length(), 40)))
+                                .put("secret", secret));
+        data = next;
+        try {
+            queueAccountLink(id, accountTicket);
+            save();
+        } catch (Exception error) {
+            data = previous;
+            throw error;
+        }
+    }
+
+    private void queueAccountLink(String controller, String ticket) throws Exception {
+        if (ticket == null) return;
+        Crypto.decode(ticket, 32);
+        // האישור נשמר באותה כתיבה מוצפנת עם ההרשאה. גם כיבוי בין השמירה לשליחה לא מאבד אותו.
+        JSONObject pending = data.optJSONObject("accountLinks");
+        if (pending == null) {
+            pending = new JSONObject();
+            data.put("accountLinks", pending);
+        }
+        pending.put(controller, ticket);
+    }
+
+    public synchronized JSONArray accountLinks() throws Exception {
+        JSONArray result = new JSONArray();
+        JSONObject pending = data.optJSONObject("accountLinks");
+        if (pending != null)
+            for (java.util.Iterator<String> keys = pending.keys(); keys.hasNext(); ) {
+                String id = keys.next();
+                if (!secretFor(id).isEmpty())
+                    result.put(
+                            new JSONObject()
+                                    .put("controller", id)
+                                    .put("ticket", pending.getString(id)));
+            }
+        return result;
+    }
+
+    public synchronized void accountLinked(String ticket) throws Exception {
+        JSONObject pending = data.optJSONObject("accountLinks");
+        if (pending == null) return;
+        String found = null;
+        for (java.util.Iterator<String> keys = pending.keys(); keys.hasNext(); ) {
+            String id = keys.next();
+            if (ticket.equals(pending.optString(id))) {
+                found = id;
+                break;
+            }
+        }
+        if (found == null) return;
+        JSONObject previous = data;
+        data = new JSONObject(data.toString());
+        data.getJSONObject("accountLinks").remove(found);
+        try {
+            save();
+        } catch (Exception error) {
+            data = previous;
+            throw error;
+        }
+    }
+
     public synchronized void revoke(String id) throws Exception {
         data.getJSONObject("controllers").remove(id);
+        if (data.optJSONObject("accountLinks") != null)
+            data.getJSONObject("accountLinks").remove(id);
         save();
     }
 
@@ -190,6 +302,7 @@ public final class Vault {
         data.put("controllers", new JSONObject());
         data.remove("pairSecret");
         data.remove("pairExpires");
+        data.remove("accountLinks");
         save();
     }
 

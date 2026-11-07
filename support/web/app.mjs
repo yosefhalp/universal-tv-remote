@@ -3,8 +3,26 @@ import { decodePairing, importSecret, randomId, randomSecret, validId } from './
 import { savedDevices, saveDevice, forgetDevice } from './store.mjs';
 import { normalizeCode } from './srp.mjs';
 import { PointerSurface } from './pointer.mjs';
+import { AccountClient } from './account.mjs';
+import { accountUI, accountMessage } from './account-ui.mjs';
 
 const $ = (id) => document.getElementById(id);
+let accountConnectionToken;
+const account = new AccountClient({
+  onChange: () => {
+    accounts?.render();
+    if (
+      selected?.account &&
+      (!account.token ||
+        account.user?.mustChangePassword ||
+        accountConnectionToken !== account.token)
+    )
+      stop().catch(() => {});
+    else if (!$('home').hidden) showHome().catch(() => {});
+  },
+});
+let accounts;
+let accountSyncSupported = false;
 let pointerSupported = false;
 const pointer = new PointerSurface({
   surface: $('screen'),
@@ -37,6 +55,9 @@ let connection,
 let expectedClose = false,
   pendingPair;
 const messages = {
+  ACCOUNT_DENIED: 'הגישה לחשבון הסתיימה או בוטלה. פתחו את החשבון ובדקו את הכניסה.',
+  ACCOUNT_UPDATE_REQUIRED: 'יש לעדכן את קרוב בטלוויזיה לגרסה שתומכת בחשבונות ואז לנסות שוב.',
+  ACCOUNT_LINK_PENDING: 'הסנכרון עדיין לא אושר. לחצו על סנכרון חשבון כדי לבדוק שוב.',
   POINTER_BUSY: 'המחווה הקודמת מסתיימת. אפשר לנסות שוב בעוד רגע.',
   POINTER_CANCELLED: 'Android הפסיק את המחווה. אפשר לנסות שוב.',
   STALE_GEOMETRY: 'המסך שינה כיוון או גודל. המתינו לתמונה החדשה.',
@@ -113,7 +134,7 @@ async function showHome() {
   $('home').hidden = false;
   $('session').hidden = true;
   $('devices').replaceChildren();
-  const devices = await savedDevices();
+  const devices = [...(await savedDevices()), ...account.devices];
   $('empty').hidden = devices.length > 0;
   for (const device of devices) {
     const row = document.createElement('div');
@@ -123,7 +144,11 @@ async function showHome() {
     const title = document.createElement('strong');
     title.textContent = device.name;
     const subtitle = document.createElement('small');
-    subtitle.textContent = device.pending ? 'הזיווג ממתין להשלמה' : 'מכשיר שמור · חיבור בלחיצה';
+    subtitle.textContent = device.account
+      ? 'טלוויזיה בחשבון · זמינה גם במכשירים נוספים'
+      : device.pending
+        ? 'הזיווג ממתין להשלמה'
+        : 'מכשיר מקומי · חיבור בלחיצה';
     info.append(title, subtitle);
     const button = document.createElement('button');
     button.textContent = 'התחברות';
@@ -132,15 +157,21 @@ async function showHome() {
     const remove = document.createElement('button');
     remove.className = 'quiet';
     remove.textContent = 'הסרה';
-    remove.setAttribute('aria-label', `הסרת ${device.name} מהדפדפן`);
+    remove.setAttribute(
+      'aria-label',
+      `הסרת ${device.name} ${device.account ? 'מהחשבון' : 'מהדפדפן'}`,
+    );
     remove.onclick = async () => {
       if (
         await confirmAction(
-          'הסרה מהדפדפן',
-          'ההסרה מוחקת את המפתח מהמכשיר הזה. לביטול ההרשאה גם בטלוויזיה, השתמשו במסך המכשירים המורשים.',
+          device.account ? 'הסרה מהחשבון' : 'הסרה מהדפדפן',
+          device.account
+            ? 'הטלוויזיה תוסר מהחשבון בכל המכשירים. זיווגים מקומיים קודמים יישארו.'
+            : 'ההסרה מוחקת את המפתח מהמכשיר הזה. לביטול ההרשאה גם בטלוויזיה, השתמשו במסך המכשירים המורשים.',
         )
       ) {
-        await forgetDevice(device.device);
+        if (device.account) await account.unlink(device.device);
+        else await forgetDevice(device.device);
         await showHome();
       }
     };
@@ -156,6 +187,7 @@ async function stop(show = true) {
   connection?.close();
   connection = null;
   selected = null;
+  accountConnectionToken = undefined;
   reconnects = 0;
   clearFrame('העזרה הסתיימה');
   status('מוכנים לעזור');
@@ -163,6 +195,10 @@ async function stop(show = true) {
   if (show) await showHome();
 }
 async function connectDevice(device, retry = false) {
+  if (device.account && (!account.token || account.user?.mustChangePassword)) {
+    await accounts.open();
+    return;
+  }
   if (!retry) {
     await stop(false);
     reconnects = 0;
@@ -171,6 +207,7 @@ async function connectDevice(device, retry = false) {
   if (!retry) window.scrollTo({ top: 0, behavior: 'instant' });
   clearTimeout(reconnectTimer);
   selected = device;
+  accountConnectionToken = device.account ? account.token : undefined;
   if (document.hidden) {
     setControls(false);
     status('העזרה ברקע');
@@ -193,18 +230,24 @@ async function connectDevice(device, retry = false) {
     device: device.device,
     controller: device.controller,
     secret: device.key,
+    accountToken: device.account ? account.token : undefined,
     onClose: (reason) => {
       if (expectedClose || generation !== current) return;
       clearTimeout(frameTimer);
       setControls(false);
       clearFrame('החיבור נותק — התמונה אינה עדכנית');
       status('מנותק');
+      if (reason === 'ACCOUNT_DENIED')
+        account
+          .refresh()
+          .catch(() => {})
+          .finally(() => accounts.render());
       // שחרור החלון הקודם עשוי להגיע לשרת רגע אחרי החיבור החדש. ממתינים בקצרה,
       // בלי לנתק בקר אחר שעדיין פעיל ובלי לנסות ללא סוף כשהטלוויזיה תפוסה.
       const retryable =
         reason === 'BUSY'
           ? reconnects < 3
-          : !['DENIED', 'EXPIRED', 'BAD_IDENTITY', 'BLOCKED'].includes(reason);
+          : !['DENIED', 'ACCOUNT_DENIED', 'EXPIRED', 'BAD_IDENTITY', 'BLOCKED'].includes(reason);
       if (retryable && selected && !document.hidden && navigator.onLine) {
         reconnectTimer = setTimeout(
           () => connectDevice(device, true),
@@ -222,6 +265,7 @@ async function connectDevice(device, retry = false) {
       await saveDevice(device);
     }
     reconnects = 0;
+    accountSyncSupported = info.accountSync === true;
     clearTimeout(noticeTimer);
     $('notice').hidden = true;
     status('מחוברים לטלוויזיה', true);
@@ -254,13 +298,13 @@ async function connectDevice(device, retry = false) {
     notice(explain(error));
     status('לא מחובר');
     setControls(false);
-    if (['DENIED', 'EXPIRED', 'BAD_IDENTITY', 'BLOCKED'].includes(error.message))
+    if (['DENIED', 'ACCOUNT_DENIED', 'EXPIRED', 'BAD_IDENTITY', 'BLOCKED'].includes(error.message))
       clearTimeout(reconnectTimer);
   }
 }
 function setControls(enabled) {
   for (const button of document.querySelectorAll(
-    '[data-key], #text-form button, #apps button, #adb-enable, #adb-disable, #adb-status, #capture-permission, #refresh-controllers, #forget',
+    '[data-key], #text-form button, #apps button, #adb-enable, #adb-disable, #adb-status, #capture-permission, #refresh-controllers, #forget, #account-link',
   ))
     button.disabled = !enabled;
 }
@@ -356,9 +400,21 @@ async function pair(pairing) {
     code: pairing.code,
   });
   try {
-    await temporary.connect();
-    const secret = randomSecret(),
-      controller = randomId();
+    const info = await temporary.connect();
+    const useAccount = !!account.token && !account.user.mustChangePassword;
+    if (account.token && account.user.mustChangePassword) throw new Error('ACCOUNT_DENIED');
+    if (useAccount && !info.accountSync) throw new Error('ACCOUNT_UPDATE_REQUIRED');
+    const prepared = useAccount ? await account.prepare(pairing.device, pairing.name) : null;
+    if (prepared?.linked) {
+      await account.sync();
+      temporary.close();
+      const saved = account.devices.find((item) => item.device === pairing.device);
+      if (!saved) throw new Error('ACCOUNT_LINK_PENDING');
+      await connectDevice(saved);
+      return;
+    }
+    const secret = prepared?.secret || randomSecret(),
+      controller = prepared?.controller || randomId();
     const record = {
       device: pairing.device,
       controller,
@@ -367,20 +423,31 @@ async function pair(pairing) {
       pending: true,
     };
     // קודם שומרים את המפתח המקומי: אם תשובת האישור תאבד, אפשר להתחבר שוב בלי לאבד את הזיווג.
-    await saveDevice(record);
+    if (!useAccount) await saveDevice(record);
     try {
-      await temporary.call('enroll', {
-        controller,
-        secret,
-        name: $('controller-name').value.trim() || 'המכשיר שלי',
-      });
+      await temporary.call(
+        'enroll',
+        {
+          controller,
+          secret,
+          name: $('controller-name').value.trim() || 'המכשיר שלי',
+          ...(prepared ? { accountTicket: prepared.ticket } : {}),
+        },
+        14000,
+      );
     } catch (error) {
       if (!['REQUEST_TIMEOUT', 'DISCONNECTED'].includes(error.message)) {
-        await forgetDevice(record.device);
+        if (!useAccount) await forgetDevice(record.device);
         throw error;
       }
     }
     temporary.close();
+    if (useAccount) {
+      await account.sync();
+      const saved = account.devices.find((item) => item.device === pairing.device);
+      if (!saved) throw new Error('ACCOUNT_LINK_PENDING');
+      Object.assign(record, saved, { pending: false });
+    }
     pendingPair = null;
     $('pair-link').value = '';
     $('pair-code').value = '';
@@ -527,6 +594,11 @@ $('forget').onclick = async () => {
     ))
   )
     return;
+  if (selected.account) {
+    await account.unlink(selected.device);
+    await stop();
+    return;
+  }
   const id = selected.device;
   const result = await action('revoke', { controller: selected.controller });
   if (result) {
@@ -539,6 +611,8 @@ document.addEventListener('keydown', (event) => {
     !connection?.ready ||
     /INPUT|TEXTAREA|SELECT/.test(event.target.tagName) ||
     $('confirm-dialog').open ||
+    $('account-dialog').open ||
+    $('account-reset-dialog').open ||
     event.altKey ||
     event.ctrlKey ||
     event.metaKey
@@ -568,7 +642,10 @@ document.addEventListener('visibilitychange', () => {
     setControls(false);
     clearFrame('העזרה הושהתה כשהחלון היה ברקע');
     status('העזרה ברקע');
-  } else if (selected) connectDevice(selected, true);
+  } else {
+    if (account.token) account.refresh().catch(() => {});
+    if (selected) connectDevice(selected, true);
+  }
 });
 setInterval(() => {
   if (lastFrame && !document.hidden && Date.now() - lastFrame > 4000)
@@ -611,10 +688,69 @@ async function readPairingLink() {
 window.addEventListener('hashchange', () =>
   readPairingLink().catch((error) => notice(explain(error))),
 );
+accounts = accountUI(account, {
+  onLogout: async () => {
+    if (selected?.account) await stop();
+    else if (!$('home').hidden) await showHome();
+  },
+  onSync: async () => {
+    if (!$('home').hidden) await showHome();
+  },
+  onLink: async () => {
+    if (!connection?.ready || !selected || selected.account) {
+      notice(
+        selected?.account
+          ? 'הטלוויזיה כבר מסונכרנת לחשבון.'
+          : 'מתחברים קודם לטלוויזיה המקומית שרוצים לסנכרן.',
+      );
+      return;
+    }
+    if (!accountSyncSupported) {
+      notice(messages.ACCOUNT_UPDATE_REQUIRED);
+      return;
+    }
+    if (!account.token || account.user.mustChangePassword) {
+      await accounts.open();
+      return;
+    }
+    const active = connection,
+      device = selected;
+    $('account-link').disabled = true;
+    try {
+      const prepared = await account.prepare(device.device, device.name);
+      if (!prepared.linked) {
+        try {
+          await active.call(
+            'grantAccount',
+            {
+              ticket: prepared.ticket,
+              controller: prepared.controller,
+              secret: prepared.secret,
+              name: device.name,
+            },
+            14000,
+          );
+        } catch (error) {
+          if (!['REQUEST_TIMEOUT', 'DISCONNECTED'].includes(error.message)) throw error;
+        }
+      }
+      await account.sync();
+      if (!account.devices.some((item) => item.device === device.device))
+        throw new Error('ACCOUNT_LINK_PENDING');
+      notice('הטלוויזיה סונכרנה לחשבון וזמינה גם בטלפון ובטאבלט נוספים.');
+    } catch (error) {
+      notice(messages[error.message] || accountMessage(error));
+    } finally {
+      $('account-link').disabled = !connection?.ready;
+    }
+  },
+});
 try {
   if (!isSecureContext || !crypto.subtle)
     throw new Error('נדרש חיבור HTTPS כדי לשמור על הצפנת השליטה.');
   await showHome();
+  await account.init().catch((error) => notice(accountMessage(error)));
+  if (account.user?.mustChangePassword) await accounts.open();
   await readPairingLink();
 } catch (error) {
   notice(messages[error.message] || error.message);

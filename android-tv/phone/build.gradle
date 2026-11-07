@@ -6,8 +6,9 @@ android {
         applicationId 'org.yosef.karov.phone'
         minSdk 28
         targetSdk 36
-        versionCode 9
-        versionName '1.3.0'
+        // גרסת מעבדה נמוכה מאפשרת לבדוק את המעדכן בלי לפרסם או לדרוס חבילת הפצה.
+        versionCode = (project.findProperty('phoneVersionCode') ?: '11').toInteger()
+        versionName = (project.findProperty('phoneVersionName') ?: '1.4.1')
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     buildFeatures { buildConfig true }

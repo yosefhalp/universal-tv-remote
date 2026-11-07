@@ -141,8 +141,7 @@ public final class LocalAdb {
         } catch (Exception error) {
             if (current == generation) {
                 status = "אין חיבור לניפוי שגיאות ברשת. בדקו את הגדרות הסטרימר";
-                if (BuildConfig.DEBUG)
-                    android.util.Log.w("KarovAdb", "חיבור ADB מקומי לא הושלם", error);
+                logFailure(error);
             }
         } finally {
             if (!ready || current != generation) {
@@ -170,6 +169,7 @@ public final class LocalAdb {
                                 execute(active, "echo karov", 1024);
                                 watchConnection(active, current);
                             } catch (Exception error) {
+                                logFailure(error);
                                 disconnected(active, current);
                             }
                         },
@@ -221,6 +221,7 @@ public final class LocalAdb {
                     }
                 } else callback.done(true, null);
             } catch (Exception error) {
+                logFailure(error);
                 disconnected(active, current);
                 callback.done(null, "ADB_UNAVAILABLE");
             }
@@ -281,24 +282,78 @@ public final class LocalAdb {
     }
 
     private byte[] execute(Socket active, String command, int limit) throws Exception {
-        int local = ++streamId, peer = 0;
+        return execute(active, command, limit, ++streamId);
+    }
+
+    static byte[] execute(Socket active, String command, int limit, int local) throws Exception {
+        StreamState stream = new StreamState(local);
         write(active, OPEN, local, 0, Crypto.bytes("exec:" + command + "\0"));
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         for (int count = 0; count < 8192; count++) {
             Packet packet = read(active);
-            if (packet.arg1 != local) throw new IOException("ADB_STREAM");
-            if (peer == 0) peer = packet.arg0;
-            else if (peer != packet.arg0) throw new IOException("ADB_STREAM");
+            stream.accept(packet);
             if (packet.command == WRTE) {
                 if (output.size() + packet.data.length > limit) throw new IOException("ADB_LIMIT");
                 output.write(packet.data);
-                write(active, OKAY, local, peer, new byte[0]);
+                write(active, OKAY, local, stream.peer, new byte[0]);
             } else if (packet.command == CLSE) {
-                write(active, CLSE, local, peer, new byte[0]);
+                // הסוכן כבר סגר את הזרם. אין תשובת סגירה נוספת שיכולה להיכשל אחרי ביצוע הפקודה.
                 return output.toByteArray();
             } else if (packet.command != OKAY) throw new IOException("ADB_MESSAGE");
         }
         throw new IOException("ADB_LIMIT");
+    }
+
+    static final class StreamState {
+        private final int local;
+        private boolean opened;
+        int peer;
+
+        StreamState(int local) {
+            this.local = local;
+        }
+
+        void accept(Packet packet) throws IOException {
+            if (packet.arg1 != local) throw new IOException("ADB_STREAM");
+            if (!opened) {
+                // סגירה לפני אישור הפתיחה היא סירוב לפתוח, ולא הצלחה ללא פלט.
+                if (packet.command == CLSE) throw new IOException("ADB_OPEN");
+                if (packet.command != OKAY) throw new IOException("ADB_MESSAGE");
+                if (packet.arg0 == 0) throw new IOException("ADB_STREAM");
+                peer = packet.arg0;
+                opened = true;
+                return;
+            }
+            // גרסאות ADB ישנות עשויות לסגור עם מזהה שולח אפס, רק אחרי שאושר אותו זרם באותו חיבור.
+            if (packet.command == CLSE && packet.arg0 == 0) return;
+            if (packet.arg0 != peer) throw new IOException("ADB_STREAM");
+        }
+    }
+
+    static String failureDiagnostic(Exception error) {
+        String message = error.getMessage();
+        boolean known =
+                message != null
+                        && Set.of(
+                                        "ADB_OPEN",
+                                        "ADB_AUTH",
+                                        "ADB_STREAM",
+                                        "ADB_MESSAGE",
+                                        "ADB_LIMIT",
+                                        "ADB_HEADER",
+                                        "ADB_CHECKSUM",
+                                        "ADB_UNAVAILABLE",
+                                        "CAPTURE_FAILED",
+                                        "UPDATE_INSTALL",
+                                        "UPDATE_SIZE")
+                                .contains(message);
+        return error.getClass().getSimpleName() + ":" + (known ? message : "IO_FAILURE");
+    }
+
+    private static void logFailure(Exception error) {
+        // נשמרים רק סוג החריגה וקוד קבוע. אין רישום פקודה, תוכן זרם, מפתח או הודעת מערכת חופשית.
+        if (BuildConfig.DEBUG)
+            android.util.Log.w("KarovAdb", "זרם ADB לא הושלם: " + failureDiagnostic(error));
     }
 
     // מסלול מוגבל לעדכון קרוב עצמה בלבד. אין קבלת פקודת shell, כתובת או קובץ מהשלט הרחוק.
@@ -321,7 +376,8 @@ public final class LocalAdb {
                                 throw new IOException("ADB_UNAVAILABLE");
                             try (InputStream input = new FileInputStream(apk)) {
                                 active.setSoTimeout(120000);
-                                int local = ++streamId, peer = 0;
+                                int local = ++streamId;
+                                StreamState stream = new StreamState(local);
                                 long sent = 0;
                                 boolean awaitingAck = false;
                                 write(
@@ -336,18 +392,15 @@ public final class LocalAdb {
                                 ByteArrayOutputStream output = new ByteArrayOutputStream();
                                 for (int count = 0; count < 20000; count++) {
                                     Packet packet = read(active);
-                                    if (packet.arg1 != local || peer != 0 && packet.arg0 != peer)
-                                        throw new IOException("ADB_STREAM");
-                                    peer = packet.arg0;
+                                    stream.accept(packet);
                                     if (packet.command == OKAY) {
                                         awaitingAck = false;
                                     } else if (packet.command == WRTE) {
                                         if (output.size() + packet.data.length > 16384)
                                             throw new IOException("ADB_LIMIT");
                                         output.write(packet.data);
-                                        write(active, OKAY, local, peer, new byte[0]);
+                                        write(active, OKAY, local, stream.peer, new byte[0]);
                                     } else if (packet.command == CLSE) {
-                                        write(active, CLSE, local, peer, new byte[0]);
                                         if (sent != apk.length()
                                                 || !output.toString("UTF-8")
                                                         .trim()
@@ -364,7 +417,7 @@ public final class LocalAdb {
                                                 active,
                                                 WRTE,
                                                 local,
-                                                peer,
+                                                stream.peer,
                                                 read == buffer.length
                                                         ? buffer
                                                         : Arrays.copyOf(buffer, read));
@@ -374,6 +427,7 @@ public final class LocalAdb {
                                 }
                                 throw new IOException("ADB_LIMIT");
                             } catch (Exception error) {
+                                logFailure(error);
                                 disconnected(active, current);
                                 throw error;
                             } finally {

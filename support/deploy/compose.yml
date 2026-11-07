@@ -4,7 +4,7 @@ services:
     build:
       context: ../..
       dockerfile: support/Dockerfile
-    image: karov-relay:1.3.0
+    image: karov-relay:1.4.1
     restart: unless-stopped
     init: true
     read_only: true

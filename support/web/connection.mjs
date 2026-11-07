@@ -8,6 +8,7 @@ export class Connection {
     controller,
     secret,
     code,
+    accountToken,
     WebSocketClass = WebSocket,
     onClose = () => {},
   }) {
@@ -20,6 +21,7 @@ export class Connection {
       controller,
       secret,
       code: code === undefined ? undefined : normalizeCode(code),
+      accountToken,
       WebSocketClass,
       onClose,
     };
@@ -30,7 +32,7 @@ export class Connection {
   async connect() {
     this.close('REPLACED');
     const generation = ++this.generation;
-    const { url, device, controller, secret, code, WebSocketClass } = this.options;
+    const { url, device, controller, secret, code, accountToken, WebSocketClass } = this.options;
     const ws = (this.ws = new WebSocketClass(`${url}/v1/client/${device}`));
     this.incoming = Promise.resolve();
     const nonce = randomSecret();
@@ -61,7 +63,16 @@ export class Connection {
                 nonce,
               }),
             );
-          } else ws.send(JSON.stringify({ t: 'hello', v: 1, controller, nonce }));
+          } else
+            ws.send(
+              JSON.stringify({
+                t: 'hello',
+                v: 1,
+                controller,
+                nonce,
+                ...(accountToken ? { accountToken } : {}),
+              }),
+            );
         } catch (error) {
           fail(error.message);
         }
@@ -80,6 +91,7 @@ export class Connection {
               throw new Error('BAD_MESSAGE');
             const message = JSON.parse(data);
             if (message.t === 'pong') return;
+            if (message.t === 'account-denied') throw new Error('ACCOUNT_DENIED');
             if (['offline', 'busy', 'denied', 'expired', 'blocked'].includes(message.t))
               throw new Error(
                 code && message.t === 'denied' ? 'CODE_DENIED' : message.t.toUpperCase(),

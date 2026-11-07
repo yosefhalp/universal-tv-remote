@@ -112,4 +112,55 @@ final class PhoneVault {
         JSONObject next = new JSONObject(data.toString()).put("last", id);
         save(next);
     }
+
+    // החשבון נשמר בנפרד מהזיווגים המקומיים, בתוך אותה כספת מוצפנת של Android.
+    synchronized JSONObject accountSession() throws Exception {
+        JSONObject session = data.optJSONObject("accountSession");
+        return session == null ? null : new JSONObject(session.toString());
+    }
+
+    synchronized void accountSession(JSONObject session) throws Exception {
+        JSONObject next = new JSONObject(data.toString());
+        next.remove("accountDevices");
+        if (session == null) next.remove("accountSession");
+        else next.put("accountSession", new JSONObject(session.toString()));
+        save(next);
+    }
+
+    synchronized void accountUser(JSONObject user) throws Exception {
+        JSONObject next = new JSONObject(data.toString());
+        next.getJSONObject("accountSession").put("user", new JSONObject(user.toString()));
+        if (user.optBoolean("mustChangePassword")) next.remove("accountDevices");
+        save(next);
+    }
+
+    synchronized JSONArray accountDevices() throws Exception {
+        JSONArray values = data.optJSONArray("accountDevices");
+        return values == null ? new JSONArray() : new JSONArray(values.toString());
+    }
+
+    synchronized void accountDevices(JSONArray values) throws Exception {
+        for (int i = 0; i < values.length(); i++) {
+            JSONObject record = values.getJSONObject(i);
+            if (!Crypto.validId(record.getString("device"))
+                    || !Crypto.validId(record.getString("controller")))
+                throw new Exception("BAD_ID");
+            Crypto.decode(record.getString("secret"), 32);
+        }
+        JSONObject next = new JSONObject(data.toString());
+        next.put("accountDevices", new JSONArray(values.toString()));
+        save(next);
+    }
+
+    synchronized JSONObject accountDevice(String id) throws Exception {
+        JSONArray values = accountDevices();
+        for (int i = 0; i < values.length(); i++) {
+            JSONObject record = values.getJSONObject(i);
+            if (id.equals(record.optString("device"))) {
+                record.put("account", true);
+                return record;
+            }
+        }
+        return null;
+    }
 }

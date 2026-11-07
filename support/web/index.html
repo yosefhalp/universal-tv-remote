@@ -64,6 +64,7 @@
         ></a
       ><span class="workspace-label">מרכז השליטה</span
       ><span id="network" class="connection-label">מוכנים לעזור</span>
+      <button id="account-open" class="quiet">החשבון שלי</button>
     </header>
     <main>
       <section id="home" class="home">
@@ -199,6 +200,11 @@
                   <svg class="icon"><use href="#i-expand" /></svg>
                 </button>
               </div>
+              <div class="fullscreen-media" role="group" aria-label="ניגון במסך מלא" dir="ltr">
+                <button data-key="REWIND" aria-label="הרצה לאחור"><svg class="icon"><use href="#i-forward" transform="translate(24 0) scale(-1 1)" /></svg></button>
+                <button data-key="PLAY_PAUSE" aria-label="ניגון או השהיה"><svg class="icon"><use href="#i-play" /></svg></button>
+                <button data-key="FAST_FORWARD" aria-label="הרצה קדימה"><svg class="icon"><use href="#i-forward" /></svg></button>
+              </div>
             </div>
             <div
               class="pointer-tools"
@@ -321,6 +327,7 @@
             </details>
             <details>
               <summary>גישה ומכשירים</summary>
+              <button id="account-link" class="quiet">סנכרון הטלוויזיה לחשבון</button>
               <div id="controllers"></div>
               <button id="refresh-controllers" class="quiet">
                 רענון מכשירים מורשים</button
@@ -340,8 +347,35 @@
       ></div>
     </main>
     <footer>
-      <span>קרוב. גם מרחוק.</span><span class="mono">FAMILY REMOTE / 1.0</span>
+      <span>קרוב. גם מרחוק.</span><span class="mono">FAMILY REMOTE / 1.4.1</span>
     </footer>
+    <dialog id="account-dialog" aria-labelledby="account-title">
+      <div class="account-heading"><h2 id="account-title">החשבון שלי</h2><button id="account-close" class="quiet" aria-label="סגירת חלון החשבון">סגירה</button></div>
+      <p id="account-message" role="status" aria-live="polite"></p>
+      <section id="account-guest">
+        <p id="account-setup" hidden>ליצירת המנהל הראשון מזינים גם את סיסמת ההתקנה של קרוב.</p>
+        <form id="account-auth">
+          <label for="account-username">אימייל או שם משתמש</label><input id="account-username" inputmode="email" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="254" required />
+          <label for="account-password">סיסמה</label><input id="account-password" type="password" autocomplete="current-password" minlength="8" maxlength="128" required />
+          <div id="account-installation-wrap" hidden><label for="account-installation">סיסמת ההתקנה</label><input id="account-installation" type="password" autocomplete="off" maxlength="128" /></div>
+          <div class="dialog-actions"><button id="account-login" class="primary" type="submit" value="login">כניסה</button><button id="account-register" type="submit" value="register">יצירת חשבון</button></div>
+        </form>
+      </section>
+      <section id="account-member" hidden>
+        <p id="account-user"></p><p id="account-forced" hidden>המנהל איפס את הסיסמה. יש להחליף אותה לפני הגישה לטלוויזיות.</p>
+        <div class="dialog-actions"><button id="account-sync">סנכרון טלוויזיות</button><button id="account-logout" class="quiet">יציאה מהחשבון</button></div>
+        <details id="account-password-details"><summary>החלפת סיסמה</summary><form id="account-password-form">
+          <label for="account-current">סיסמה נוכחית</label><input id="account-current" type="password" autocomplete="current-password" minlength="8" maxlength="128" required />
+          <label for="account-new">סיסמה חדשה</label><input id="account-new" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
+          <button class="primary">שמירת סיסמה חדשה</button>
+        </form></details>
+        <section id="account-admin" hidden><h3>ניהול משתמשים</h3><button id="account-users-refresh" class="quiet">רענון משתמשים</button><div id="account-users"></div></section>
+      </section>
+    </dialog>
+    <dialog id="account-reset-dialog" aria-labelledby="account-reset-title"><form id="account-reset-form">
+      <h2 id="account-reset-title">איפוס סיסמה</h2><p id="account-reset-user"></p><label for="account-reset-password">סיסמה זמנית חדשה</label><input id="account-reset-password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
+      <p>המשתמש יצטרך להחליף אותה בכניסה הבאה.</p><p id="account-reset-message" role="status"></p><div class="dialog-actions"><button type="button" id="account-reset-cancel">ביטול</button><button class="danger">איפוס וניתוק החיבורים</button></div>
+    </form></dialog>
     <dialog id="confirm-dialog">
       <form method="dialog">
         <h2 id="confirm-title">אישור פעולה</h2>

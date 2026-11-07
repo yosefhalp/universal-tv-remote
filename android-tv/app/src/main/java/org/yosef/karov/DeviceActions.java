@@ -39,6 +39,7 @@ public final class DeviceActions {
                 .put("sdk", Build.VERSION.SDK_INT)
                 .put("localAdb", adb.ready())
                 .put("pointer", TvAccessibilityService.instance != null || adb.ready())
+                .put("accountSync", true)
                 .put("remoteStatus", adb.status())
                 .put("accessibility", TvAccessibilityService.instance != null)
                 .put("captureMode", captureMode)
@@ -87,13 +88,25 @@ public final class DeviceActions {
                         else ScreenService.capture(callback);
                     }
                     case "key" -> {
-                        if (service == null && !remote.ready()) {
-                            callback.done(null, "NO_ACCESSIBILITY");
-                            return;
-                        }
                         String key = args.getString("key");
-                        if (remote.ready() && !key.equals("SETTINGS"))
-                            remote.key(key, current, callback);
+                        // ניגון וקול משתמשים במנגנון המדיה של Android גם כשהחיבור המקומי פעיל.
+                        // אין לשלוח שוב לחיצת ניגון אחרי כשל ADB: ייתכן שהלחיצה כבר בוצעה והתגובה
+                        // אבדה.
+                        boolean platform =
+                                java.util.Set.of(
+                                                "SETTINGS",
+                                                "VOLUME_UP",
+                                                "VOLUME_DOWN",
+                                                "MUTE",
+                                                "PLAY_PAUSE",
+                                                "REWIND",
+                                                "FAST_FORWARD")
+                                        .contains(key);
+                        if (platform) {
+                            callback.done(key(key, service), null);
+                        } else if (service == null && !remote.ready()) {
+                            callback.done(null, "NO_ACCESSIBILITY");
+                        } else if (remote.ready()) remote.key(key, current, callback);
                         else callback.done(key(key, service), null);
                     }
                     case "text" -> {

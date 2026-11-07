@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { PairingDirectory } from './pairing-directory.mjs';
 import { EnrollmentPassword, decodeEnrollment } from './enrollment.mjs';
+import { AccountStore } from './accounts.mjs';
+import { accountHttp } from './account-http.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../web');
 const TYPES = {
@@ -46,10 +48,12 @@ export async function startServer({
   registrationKey = '',
   registrationKeyHash = '',
   enrollmentPasswordVerifier = '',
+  accountDataFile = dataFile ? resolve(dirname(dataFile), 'accounts.json') : null,
+  accountNow = Date.now,
   maxDevices = 32,
   maxConnections = 128,
 } = {}) {
-  // נשמרת רק טביעת מפתח החיבור. הסודות המפענחים את השליטה ואת התמונה אינם מגיעים לשרת.
+  // רישום הסוכנים שומר רק טביעת מפתח. הרשאות חשבון נשמרות בנפרד ובצורה מוצפנת.
   const devices =
     dataFile && existsSync(dataFile) ? JSON.parse(readFileSync(dataFile, 'utf8')) : {};
   if (
@@ -72,6 +76,19 @@ export async function startServer({
   const rooms = new Map(),
     rates = new Map();
   const pairings = new PairingDirectory();
+  let revokeSockets = () => {};
+  const accounts = new AccountStore({
+    dataFile: accountDataFile,
+    now: accountNow,
+    deviceExists: (id) => Object.hasOwn(devices, id),
+    verifyInstallation: async (value, address) =>
+      password
+        ? password.check(value, address)
+        : typeof value === 'string' && enrollmentHash && equal(digest(value), enrollmentHash)
+          ? 'OK'
+          : 'DENIED',
+    onRevoke: () => revokeSockets(),
+  });
   const persist = () => {
     if (!dataFile) return;
     mkdirSync(dirname(resolve(dataFile)), { recursive: true });
@@ -102,6 +119,10 @@ export async function startServer({
     } catch {
       res.writeHead(400);
       res.end();
+      return;
+    }
+    if (path === '/v1/account' || path.startsWith('/v1/account/')) {
+      void accountHttp(req, res, path, accounts, publicOrigin);
       return;
     }
     if (!['GET', 'HEAD'].includes(req.method)) {
@@ -167,6 +188,13 @@ export async function startServer({
   };
   const close = (ws, code = 1000) => {
     if (ws && ws.readyState < WebSocket.CLOSING) ws.close(code);
+  };
+  revokeSockets = () => {
+    for (const ws of wss.clients)
+      if (ws.accountAuth && !accounts.validSocket(ws.accountAuth)) {
+        send(ws, { t: 'account-denied' });
+        close(ws, 4010);
+      }
   };
   server.on('upgrade', async (req, socket, head) => {
     // גם חיבור שנסגר במהלך גיבוב הסיסמה מטופל בלי שגיאת socket לא נתפסת.
@@ -297,6 +325,7 @@ export async function startServer({
       }
       let burstStart = Date.now(),
         messages = 0;
+      let controllerIdentified = false;
       ws.on('message', (raw, binary) => {
         if (Date.now() - burstStart >= 1000) {
           burstStart = Date.now();
@@ -308,13 +337,88 @@ export async function startServer({
         }
         if (room[role] !== ws) return;
         const other = role === 'agent' ? room.client : room.agent;
-        const value = raw.toString();
-        if (raw.length < 2048) {
+        let value = raw.toString();
+        if (role === 'client' && ws.accountAuth && !accounts.validSocket(ws.accountAuth)) {
+          send(ws, { t: 'account-denied' });
+          close(ws, 4010);
+          return;
+        }
+        {
           let control;
           try {
             control = JSON.parse(value);
           } catch {
             /* הודעות אחרות נבדקות אצל הסטרימר. */
+          }
+          if (control?.t === 'account-link-check') {
+            if (role !== 'agent') return;
+            try {
+              const reserved = accounts.validateTicket(id, control.ticket, control.controller);
+              send(ws, {
+                t: 'account-link-checked',
+                ticket: control.ticket,
+                ok: true,
+                ...reserved,
+              });
+            } catch (error) {
+              send(ws, {
+                t: 'account-link-checked',
+                ticket: control.ticket,
+                ok: false,
+                error: error.status ? error.message : 'UNAVAILABLE',
+              });
+            }
+            return;
+          }
+          if (control?.t === 'account-linked') {
+            if (role !== 'agent') return;
+            try {
+              const result = accounts.confirm(id, control.ticket, control.controller);
+              send(ws, { t: 'account-link-result', ticket: control.ticket, ...result });
+            } catch (error) {
+              send(ws, {
+                t: 'account-link-result',
+                ticket: control.ticket,
+                ok: false,
+                error: error.status ? error.message : 'UNAVAILABLE',
+              });
+            }
+            return;
+          }
+          if (
+            control?.t === 'account-link-checked' ||
+            control?.t === 'account-link-result' ||
+            control?.t === 'account-denied'
+          )
+            return;
+          if (role === 'client' && control?.t === 'hello') {
+            if (controllerIdentified) {
+              close(ws, 4008);
+              return;
+            }
+            controllerIdentified = true;
+            try {
+              ws.accountAuth = accounts.authorizeController(
+                control.accountToken,
+                id,
+                control.controller,
+              );
+            } catch {
+              send(ws, { t: 'account-denied' });
+              close(ws, 4010);
+              return;
+            }
+            delete control.accountToken;
+            value = JSON.stringify(control);
+          }
+          if (role === 'client' && control?.t === 'code-hello') controllerIdentified = true;
+          if (
+            role === 'client' &&
+            Object.hasOwn(control || {}, 'accountToken') &&
+            control.t !== 'hello'
+          ) {
+            close(ws, 4008);
+            return;
           }
           if (control?.t === 'pair-register' || control?.t === 'pair-clear') {
             if (role !== 'agent') return;
@@ -360,6 +464,7 @@ export async function startServer({
     });
   });
   const heartbeat = setInterval(() => {
+    revokeSockets();
     for (const ws of wss.clients) {
       if (!ws.alive) {
         ws.terminate();
@@ -396,6 +501,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     registrationKey: process.env.ENROLLMENT_KEY || '',
     registrationKeyHash: process.env.ENROLLMENT_KEY_HASH || '',
     enrollmentPasswordVerifier: process.env.ENROLLMENT_PASSWORD_VERIFIER || '',
+    accountDataFile: process.env.ACCOUNT_DATA_FILE || undefined,
   });
   console.log(`TV Support listening on port ${service.port}`);
   let stopping = false;

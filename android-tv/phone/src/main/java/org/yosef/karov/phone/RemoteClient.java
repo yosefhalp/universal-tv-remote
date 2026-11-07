@@ -12,7 +12,7 @@ import java.util.function.Consumer;
 
 // כל שינוי בסשן ובמונים רץ בתור יחיד. אין שידור חוזר של פקודה אחרי ניתוק.
 final class RemoteClient {
-    private final String device, controller, secret, code;
+    private final String device, controller, secret, code, accountToken;
     private final Consumer<String> onClosed;
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
     private final OkHttpClient http =
@@ -37,10 +37,21 @@ final class RemoteClient {
             String secret,
             String code,
             Consumer<String> onClosed) {
+        this(device, controller, secret, code, null, onClosed);
+    }
+
+    RemoteClient(
+            String device,
+            String controller,
+            String secret,
+            String code,
+            String accountToken,
+            Consumer<String> onClosed) {
         this.device = device;
         this.controller = controller;
         this.secret = secret;
         this.code = code;
+        this.accountToken = accountToken;
         this.onClosed = onClosed;
     }
 
@@ -77,6 +88,8 @@ final class RemoteClient {
                                                 else
                                                     hello.put("t", "hello")
                                                             .put("controller", controller);
+                                                if (accountToken != null)
+                                                    hello.put("accountToken", accountToken);
                                                 send(hello);
                                             } catch (Exception error) {
                                                 finish("BAD_HANDSHAKE");
@@ -137,6 +150,7 @@ final class RemoteClient {
             if (text.length() > 1500000) throw new Exception("BAD_MESSAGE");
             JSONObject value = new JSONObject(text);
             String type = value.optString("t");
+            if (type.equals("account-denied")) throw new Exception("ACCOUNT_DENIED");
             if (type.equals("pong")) return;
             if (java.util.Arrays.asList("offline", "busy", "denied", "expired", "blocked")
                     .contains(type))
