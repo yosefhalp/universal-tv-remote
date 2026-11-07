@@ -148,7 +148,11 @@ public final class Vault {
         return record == null ? "" : record.optString("secret");
     }
 
-    public synchronized void enroll(String id, String secret, String name) throws Exception {
+    public synchronized void enroll(String pairingVersion, String id, String secret, String name)
+            throws Exception {
+        // הבדיקה והכתיבה באותה נעילה: סשן ישן אינו יכול להשתמש בחלון זיווג חדש שנפתח במקביל.
+        if (pairingVersion.isEmpty() || !pairingVersion.equals(secretFor("pair")))
+            throw new Exception("PAIR_EXPIRED");
         if (!Crypto.validId(id)) throw new Exception("BAD_ID");
         Crypto.decode(secret, 32);
         JSONObject controllers = data.getJSONObject("controllers");

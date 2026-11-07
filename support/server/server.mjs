@@ -15,6 +15,7 @@ import {
 import { dirname, resolve, extname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
+import { PairingDirectory } from './pairing-directory.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../web');
 const TYPES = {
@@ -64,6 +65,7 @@ export async function startServer({
   const enrollmentHash = registrationKeyHash || (registrationKey ? digest(registrationKey) : '');
   const rooms = new Map(),
     rates = new Map();
+  const pairings = new PairingDirectory();
   const persist = () => {
     if (!dataFile) return;
     mkdirSync(dirname(resolve(dataFile)), { recursive: true });
@@ -104,6 +106,25 @@ export async function startServer({
     if (path === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, protocol: 1 }));
+      return;
+    }
+    if (/^\/v1\/pair\/[0-9]{2}$/.test(path)) {
+      const key = `pair:${req.socket.remoteAddress}`;
+      const now = Date.now();
+      let rate = rates.get(key);
+      if (!rate || now - rate.start > 60000) rate = { start: now, count: 0 };
+      rates.set(key, rate);
+      const limited = ++rate.count > 60;
+      const entry = limited ? null : pairings.lookup(path.slice(-2));
+      res.writeHead(limited ? 429 : entry ? 200 : 404, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+      });
+      res.end(
+        req.method === 'HEAD'
+          ? undefined
+          : JSON.stringify(entry || { error: limited ? 'LIMIT' : 'EXPIRED' }),
+      );
       return;
     }
     const name = path === '/' ? 'index.html' : path.slice(1);
@@ -232,6 +253,7 @@ export async function startServer({
       });
       ws.on('error', () => {});
       if (role === 'agent') {
+        pairings.clear(room.agent);
         close(room.agent, 4002);
         // החלפת הסוכן מבטלת את הסשן כדי שלא יועברו פקודות עם מפתחות מהחיבור הקודם.
         send(room.client, { t: 'offline' });
@@ -266,6 +288,28 @@ export async function startServer({
         if (room[role] !== ws) return;
         const other = role === 'agent' ? room.client : room.agent;
         const value = raw.toString();
+        if (raw.length < 2048) {
+          let control;
+          try {
+            control = JSON.parse(value);
+          } catch {
+            /* הודעות אחרות נבדקות אצל הסטרימר. */
+          }
+          if (control?.t === 'pair-register' || control?.t === 'pair-clear') {
+            if (role !== 'agent') return;
+            if (control.t === 'pair-clear') pairings.clear(ws);
+            else {
+              try {
+                const prefix = pairings.register(ws, id, control);
+                send(ws, { t: 'pair-code', request: control.request, prefix });
+              } catch {
+                send(ws, { t: 'pair-code', request: control.request, error: 'UNAVAILABLE' });
+              }
+            }
+            return;
+          }
+          if (control?.t === 'pair-code') return;
+        }
         if (value === '{"t":"ping"}') {
           send(ws, { t: 'pong' });
           return;
@@ -286,6 +330,7 @@ export async function startServer({
         if (room[role] !== ws) return;
         room[role] = null;
         if (role === 'agent') {
+          pairings.clear(ws);
           send(room.client, { t: 'offline' });
           close(room.client, 4003);
         } else send(room.agent, { t: 'peer-left' });
@@ -303,6 +348,7 @@ export async function startServer({
       ws.ping();
     }
     for (const [ip, rate] of rates) if (Date.now() - rate.start > 60000) rates.delete(ip);
+    pairings.prune();
   }, 20000);
   heartbeat.unref();
   await new Promise((done, fail) => {

@@ -1,10 +1,28 @@
 import { Cipher, sessionKeys, randomSecret, validId, MAX_PACKET } from './protocol.mjs';
+import { SrpClient, normalizeCode } from './srp.mjs';
 
 export class Connection {
-  constructor({ url, device, controller, secret, WebSocketClass = WebSocket, onClose = () => {} }) {
+  constructor({
+    url,
+    device,
+    controller,
+    secret,
+    code,
+    WebSocketClass = WebSocket,
+    onClose = () => {},
+  }) {
     if (!validId(device) || !(controller === 'pair' || validId(controller)))
       throw new Error('BAD_ID');
-    this.options = { url, device, controller, secret, WebSocketClass, onClose };
+    if (code !== undefined && controller !== 'pair') throw new Error('BAD_CODE');
+    this.options = {
+      url,
+      device,
+      controller,
+      secret,
+      code: code === undefined ? undefined : normalizeCode(code),
+      WebSocketClass,
+      onClose,
+    };
     this.pending = new Map();
     this.nextId = 1;
     this.generation = 0;
@@ -12,13 +30,16 @@ export class Connection {
   async connect() {
     this.close('REPLACED');
     const generation = ++this.generation;
-    const { url, device, controller, secret, WebSocketClass } = this.options;
+    const { url, device, controller, secret, code, WebSocketClass } = this.options;
     const ws = (this.ws = new WebSocketClass(`${url}/v1/client/${device}`));
     this.incoming = Promise.resolve();
     const nonce = randomSecret();
     return new Promise((resolve, reject) => {
       let authenticated = false,
-        keys;
+        keys,
+        srp,
+        evidence,
+        serverVerified = !code;
       const fail = (reason) => {
         if (generation !== this.generation) return;
         reject(new Error(reason));
@@ -27,7 +48,24 @@ export class Connection {
       this.cancelConnect = reject;
       const timer = setTimeout(() => fail('CONNECT_TIMEOUT'), 12000);
       this.connectTimer = timer;
-      ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 1, controller, nonce }));
+      ws.onopen = () => {
+        try {
+          if (code) {
+            srp = new SrpClient();
+            ws.send(
+              JSON.stringify({
+                t: 'code-hello',
+                v: 1,
+                prefix: code.slice(0, 2),
+                A: srp.publicValue,
+                nonce,
+              }),
+            );
+          } else ws.send(JSON.stringify({ t: 'hello', v: 1, controller, nonce }));
+        } catch (error) {
+          fail(error.message);
+        }
+      };
       ws.onerror = () => fail('NETWORK');
       ws.onclose = () => {
         if (this.ws !== ws) return;
@@ -43,14 +81,32 @@ export class Connection {
             const message = JSON.parse(data);
             if (message.t === 'pong') return;
             if (['offline', 'busy', 'denied', 'expired', 'blocked'].includes(message.t))
-              throw new Error(message.t.toUpperCase());
-            if (message.t === 'challenge' && !authenticated && !keys) {
+              throw new Error(
+                code && message.t === 'denied' ? 'CODE_DENIED' : message.t.toUpperCase(),
+              );
+            if (message.t === 'code-challenge' && srp && !keys && !authenticated) {
+              evidence = await srp.respond(device, code, message.salt, message.B);
+              keys = await sessionKeys(evidence.key, device, 'pair', nonce, message.nonce);
+              if (generation !== this.generation) return;
+              this.cipher = new Cipher(keys, true);
+              ws.send(JSON.stringify({ t: 'code-proof', proof: evidence.proof }));
+            } else if (
+              message.t === 'code-proof' &&
+              evidence &&
+              !serverVerified &&
+              !authenticated
+            ) {
+              if (message.proof !== evidence.serverProof) throw new Error('BAD_IDENTITY');
+              serverVerified = true;
+              evidence = null;
+              srp = null;
+            } else if (message.t === 'challenge' && !code && !authenticated && !keys) {
               keys = await sessionKeys(secret, device, controller, nonce, message.nonce);
               if (!(await keys.verify('agent', message.proof))) throw new Error('BAD_IDENTITY');
               if (generation !== this.generation) return;
               this.cipher = new Cipher(keys, true);
               ws.send(JSON.stringify({ t: 'auth', proof: await keys.proof('client') }));
-            } else if (message.t === 'data' && this.cipher) {
+            } else if (message.t === 'data' && this.cipher && serverVerified) {
               const value = await this.cipher.open(message);
               if (generation !== this.generation) return;
               if (!authenticated) {

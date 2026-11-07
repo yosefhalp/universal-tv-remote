@@ -390,6 +390,27 @@ textarea {
   display: flex;
   justify-content: space-between;
 }
+.pair-code {
+  font:
+    600 1.55rem ui-monospace,
+    monospace;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+#code-entry {
+  display: grid;
+  gap: 10px;
+}
+#legacy-pair {
+  margin: 16px 0;
+}
+#legacy-pair summary {
+  font-size: 0.85rem;
+}
+#qr-ready {
+  border-inline-start: 3px solid #ea580c;
+  padding-inline-start: 12px;
+}
 .device {
   display: flex;
   align-items: center;

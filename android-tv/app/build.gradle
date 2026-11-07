@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'org.yosef.karov'
     compileSdk 36
-    defaultConfig { applicationId 'org.yosef.karov'; minSdk 28; targetSdk 36; versionCode 1; versionName '1.0.0'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+    defaultConfig { applicationId 'org.yosef.karov'; minSdk 28; targetSdk 36; versionCode 2; versionName '1.0.1'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
     buildFeatures { buildConfig true }
     signingConfigs {
         release {
@@ -19,8 +19,10 @@ android {
     testOptions { unitTests.returnDefaultValues = true }
 }
 dependencies {
+    implementation project(':protocol')
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.zxing:core:3.5.3'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.86'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
     androidTestImplementation 'androidx.test:runner:1.6.2'

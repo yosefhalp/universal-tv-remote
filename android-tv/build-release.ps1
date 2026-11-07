@@ -28,8 +28,17 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'בניית גרסת ההתקנה נכשלה.' }
     $artifacts = Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts'
     New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
-    Copy-Item -LiteralPath "$env:KAROV_BUILD_DIR\app\outputs\apk\release\app-release.apk" -Destination (Join-Path $artifacts 'karov-tv-1.0.0.apk')
-    Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $artifacts 'karov-tv-1.0.0.apk')
+    # חבילות נפרדות לטלוויזיה ולטלפון, עם אותו מפתח חתימה הנשמר לעדכונים עתידיים.
+    $packages = [ordered]@{ app = 'karov-tv'; phone = 'karov-phone' }
+    foreach ($module in $packages.Keys) {
+        $output = "$env:KAROV_BUILD_DIR\$module\outputs\apk\release"
+        $metadata = Get-Content -LiteralPath "$output\output-metadata.json" -Raw | ConvertFrom-Json
+        $version = $metadata.elements[0].versionName
+        if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'מספר הגרסה אינו תקין.' }
+        $destination = Join-Path $artifacts ($packages[$module] + "-$version.apk")
+        Copy-Item -LiteralPath (Join-Path $output $metadata.elements[0].outputFile) -Destination $destination
+        Get-FileHash -Algorithm SHA256 -LiteralPath $destination
+    }
 } finally {
     [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
     Remove-Item Env:KAROV_STORE_PASSWORD -ErrorAction SilentlyContinue

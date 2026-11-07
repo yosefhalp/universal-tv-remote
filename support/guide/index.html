@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="קרוב — מדריך התקנה משפחתי לשליטה בסטרימר Android TV מהטלפון ומהמחשב, גם מרשת אחרת."
+    />
+    <meta name="theme-color" content="#18191b" />
+    <title>קרוב — מתחילים אצל סבתא</title>
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="guide.css" />
+    <script defer src="guide.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#installation">למדריך ההתקנה</a>
+    <header class="masthead wrap">
+      <a class="brand" href="#top"
+        ><img src="assets/icon.svg" width="34" height="34" alt="" /><strong
+          >קרוב<span>KAROV</span></strong
+        ></a
+      >
+      <a class="open-app" href="https://tv.yosefapk.top/" target="_blank" rel="noopener"
+        >פתיחת מרכז השליטה <span aria-hidden="true">↗</span></a
+      >
+    </header>
+    <main id="top">
+      <section class="hero">
+        <div class="wrap hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">
+              מדריך ההתקנה שלך <span class="dot"></span> עכשיו גם אפליקציית Android נייטיב
+            </p>
+            <h1>לעזור לסבתא.<br /><em>גם כשאתה רחוק.</em></h1>
+            <p class="lead">
+              מסך הטלוויזיה והשלט אצלך בטלפון ובמחשב. אתה בוחר לה תוכן, עוזר בחיפוש ומסדר הגדרות —
+              גם דרך אינטרנט אחר.
+            </p>
+            <a class="button primary" href="#installation"
+              >מתחילים בהתקנה <span aria-hidden="true">↓</span></a
+            >
+            <p class="hero-note">
+              הכנה אחת של בן המשפחה ליד הטלוויזיה.<br />המטרה בשימוש היומי: כניסה בלי פעולה מסבתא.
+            </p>
+          </div>
+          <figure class="hero-visual">
+            <a
+              href="assets/desktop.png"
+              target="_blank"
+              rel="noopener"
+              aria-label="פתיחת צילום מרכז השליטה במחשב בגודל מלא"
+              ><img
+                class="desktop-shot"
+                src="assets/desktop.png"
+                alt="מרכז השליטה קרוב: תצוגת הטלוויזיה לצד שלט עגול וכפתורי ניווט"
+                width="1440"
+                height="1180"
+            /></a>
+            <a
+              class="phone-shot"
+              href="assets/native-phone-v1.png"
+              target="_blank"
+              rel="noopener"
+              aria-label="פתיחת צילום האפליקציה הנייטיבית בטלפון בגודל מלא"
+              ><img
+                src="assets/native-phone-v1.png"
+                alt="אפליקציית Android הנייטיבית קרוב עם מסך הסטרימר ושלט"
+                width="1080"
+                height="2400"
+            /></a>
+            <figcaption>צילומים מהמוצר העובד בבדיקות באמולטורים. אפשר ללחוץ להגדלה.</figcaption>
+          </figure>
+        </div>
+        <div class="wrap facts">
+          <span><b>01</b> הכנה חד־פעמית</span><span><b>QR / קוד</b> לצירוף מכשיר</span
+          ><span><b>טלפון + מחשב</b> אותו מרכז שליטה</span>
+        </div>
+      </section>
+
+      <nav class="section-nav" aria-label="חלקי המדריך">
+        <div class="wrap">
+          <a href="#installation">התקנה</a><a href="#pairing">זיווג פשוט</a
+          ><a href="#check">בדיקה אצל סבתא</a><a href="#daily">שימוש יומי</a
+          ><a href="#answers">שאלות ותשובות</a>
+        </div>
+      </nav>
+
+      <section id="installation" class="wrap section">
+        <div class="section-title">
+          <p class="eyebrow">פעם אחת · אתה מבצע</p>
+          <h2>מכינים את הטלוויזיה לעזרה.</h2>
+          <p>
+            מגיעים עם טלפון Android, השלט של הסטרימר וגישה ל־Wi-Fi של סבתא. מקלדת USB יכולה להקל על
+            ההקלדה הראשונית, אם הסטרימר תומך בה.
+          </p>
+        </div>
+        <aside class="note">
+          <strong>לפני שמגיעים:</strong> המערכת נבדקה באמולטורים. דגם סטרימר yes וגרסת Android
+          המדויקים עדיין לא נבדקו. את ההכנה והאישורים הראשונים עושה בן המשפחה; בסוף בודקים שהחיבור
+          חוזר בלי שסבתא תלחץ על דבר.
+        </aside>
+
+        <article class="step">
+          <span class="step-number" aria-hidden="true">01</span>
+          <div>
+            <h3>מכינים את מפתח ההתקנה במחשב שלך</h3>
+            <p>
+              זהו מפתח פרטי שמאפשר לצרף את הסטרימר לשרת שלך. צריך אותו פעם אחת בהתקנה. הוא שונה מקוד
+              הזיווג הקצר שמצרף את הטלפון בהמשך.
+            </p>
+            <details>
+              <summary>איך מעתיקים את המפתח במחשב שבו פותחה המערכת?</summary>
+              <p>
+                פותחים PowerShell במחשב שלך, מדביקים את הפקודה הבאה ומפעילים. היא מעתיקה את המפתח
+                ללוח בלי להציגו בחלון.
+              </p>
+              <div class="copy-box">
+                <code id="key-command" dir="ltr"
+                  >&amp; "$env:USERPROFILE\Documents\פרויקטים\שליטה מרחוק
+                  בטלוויזיות\support\deploy\Copy-InstallerKey.ps1"</code
+                ><button type="button" data-copy="key-command">העתקת הפקודה</button>
+              </div>
+              <p>
+                שומרים את המפתח בדרך פרטית ונגישה לך לקראת הביקור. הלוח של המחשב אינו מועתק אוטומטית
+                לטלוויזיה. בהתקנה מזינים אותו באמצעות השלט או מקלדת מחוברת. אין לשלוח את המפתח לאדם
+                אחר או לפרסם אותו.
+              </p>
+            </details>
+            <p class="small">המפתח עצמו אינו מופיע במדריך הציבורי הזה.</p>
+          </div>
+        </article>
+
+        <article class="step">
+          <span class="step-number" aria-hidden="true">02</span>
+          <div>
+            <h3>מעבירים את האפליקציה לסטרימר</h3>
+            <p>
+              מורידים בטלפון שלך את הקובץ הבא ומעבירים אותו <strong>לסטרימר</strong>. האפליקציה
+              לטלפון היא קובץ נפרד, בשלב 5.
+            </p>
+            <a class="button dark" href="https://tv.yosefapk.top/karov-tv.apk"
+              >הורדת קרוב לטלוויזיה · 1.0.1 <span aria-hidden="true">↓</span></a
+            >
+            <ol class="instructions">
+              <li>
+                מתקינים מהחנות בטלפון ובסטרימר את
+                <a
+                  href="https://play.google.com/store/apps/details?id=com.yablio.sendfilestotv"
+                  target="_blank"
+                  rel="noopener"
+                  ><bdi>Send files to TV</bdi> של Yablio</a
+                >. מחברים את שניהם לאותו Wi-Fi לצורך ההעברה הזאת בלבד.
+              </li>
+              <li>בסטרימר פותחים את האפליקציה ובוחרים <bdi>Receive</bdi> — קבלה.</li>
+              <li>
+                בטלפון בוחרים <bdi>Send</bdi> — שליחה, בוחרים את הקובץ
+                <bdi>karov-tv.apk</bdi> מתיקיית ההורדות ואת הסטרימר ברשימה.
+              </li>
+              <li>
+                בסטרימר פותחים את הקובץ שהתקבל ומתקינים. אם Android מבקש, מאשרים לאפליקציית ההעברה
+                להתקין קבצים ממקור זה, חוזרים לקובץ ומשלימים התקנה.
+              </li>
+            </ol>
+            <p class="small">
+              השלבים מבוססים על
+              <a
+                href="https://www.sendfilestotv.app/how-to-sideload-and-install-apk-to-tv"
+                target="_blank"
+                rel="noopener"
+                >המדריך הרשמי להעברת APK</a
+              >. שמות תפריטי ההתקנה עשויים להשתנות בסטרימר yes. אם החנות או התקנה מקובץ חסומות בדגם,
+              צריך לבדוק את הדגם לפני שממשיכים.
+            </p>
+          </div>
+        </article>
+
+        <article class="step">
+          <span class="step-number" aria-hidden="true">03</span>
+          <div>
+            <h3>פותחים ״קרוב״ ומחברים לשרת</h3>
+            <p>באפליקציה שעל הטלוויזיה ממלאים את שלושת הפרטים:</p>
+            <dl class="fields">
+              <div>
+                <dt>שם הטלוויזיה</dt>
+                <dd>הטלוויזיה של סבתא</dd>
+              </div>
+              <div>
+                <dt>כתובת השרת</dt>
+                <dd>
+                  <div class="copy-box">
+                    <code id="server-url" dir="ltr">https://tv.yosefapk.top</code
+                    ><button type="button" data-copy="server-url">העתקת הכתובת</button>
+                  </div>
+                </dd>
+              </div>
+              <div>
+                <dt>מפתח התקנה</dt>
+                <dd>המפתח הפרטי שהכנת בשלב 1</dd>
+              </div>
+            </dl>
+            <p>
+              לוחצים על <strong>״שמירת ההגדרות והפעלת העזרה״</strong>. השרת הביתי שלך כבר מפעיל את
+              השירות בכתובת הזאת.
+            </p>
+          </div>
+        </article>
+
+        <article class="step">
+          <span class="step-number" aria-hidden="true">04</span>
+          <div>
+            <h3>מאשרים שליטה וצילום פעם אחת</h3>
+            <p>
+              לוחצים באפליקציה על <strong>״הפעלת נגישות לשליטה ולצילום״</strong>, ובמסך Android
+              מפעילים <strong>״קרוב — עזרה משפחתית״</strong>. מאשרים את בקשת המערכת וחוזרים לקרוב.
+            </p>
+            <p>
+              אם קיימת הגדרה להגבלת פעילות ברקע או להפעלה אוטומטית, מאפשרים לקרוב להישאר זמינה. לא
+              משנים הרשאות של אפליקציות אחרות.
+            </p>
+            <details>
+              <summary>אם יש Android ישן, חסר צילום או החצים לא עובדים</summary>
+              <p>
+                <strong>Android 13 ומעלה:</strong> נגישות יכולה לספק צילום וחצים בלי בקשת שיתוף בכל
+                חיבור, בכפוף להגבלות היצרן.
+              </p>
+              <p>
+                <strong>Android 11–12:</strong> צילום דרך נגישות נתמך; צריך לבדוק את הניווט
+                באפליקציות שבהן סבתא משתמשת.
+              </p>
+              <p>
+                <strong>Android 9:</strong> לוחצים על ״התחלת שיתוף מסך עם אישור״. אם Android מציע
+                ״לא להציג שוב״, מסמנים ומאשרים. החזרה האוטומטית נבדקה באמולטור, ורק כשהמערכת שומרת
+                את ההסכמה הזאת.
+              </p>
+              <p>
+                <strong>שליטה נוספת:</strong> אם המסלול הרגיל אינו מספיק, יש באפליקציה חיבור ADB
+                מקומי. הוא דורש אפשרות לניפוי שגיאות ברשת ואישור רגיל של מפתח קרוב על הטלוויזיה.
+                זמינות האפשרות ושמירתה אחרי אתחול תלויות בדגם. אין לחשוף ניפוי שגיאות לאינטרנט.
+              </p>
+              <p>
+                אם המכשיר עדיין דורש אישור בכל כניסה או אחרי אתחול, ההתקנה טרם מוכנה למטרה של סבתא.
+                צריך להתאים את המסלול לדגם בפועל.
+              </p>
+            </details>
+          </div>
+        </article>
+
+        <article class="step">
+          <span class="step-number" aria-hidden="true">05</span>
+          <div>
+            <h3>מתקינים את קרוב בטלפון שלך</h3>
+            <p>
+              מורידים בטלפון Android את האפליקציה הנפרדת. זהו ממשק נייטיב ב-Java, עם צילום, שלט
+              וסריקת QR.
+            </p>
+            <a class="button dark" href="https://tv.yosefapk.top/karov-phone.apk"
+              >הורדת קרוב לטלפון Android · 1.0.0 <span aria-hidden="true">↓</span></a
+            >
+            <p>
+              פותחים את הקובץ שהורד. אם Android מבקש אישור להתקנה מהדפדפן, מאפשרים ומתקינים. בסיום
+              בוחרים ״פתיחה״. האייקון ״קרוב״ יופיע ברשימת האפליקציות בטלפון.
+            </p>
+            <p class="small">
+              שני קבצים, שתי התקנות: <bdi>karov-tv.apk</bdi> לסטרימר,
+              <bdi>karov-phone.apk</bdi> לטלפון. שתי האפליקציות מיועדות ל-Android 9 ומעלה. במחשב אין
+              צורך להתקין דבר.
+            </p>
+          </div>
+        </article>
+
+        <article id="pairing" class="step pairing-step">
+          <span class="step-number" aria-hidden="true">06</span>
+          <div>
+            <h3>מצרפים את הטלפון או המחשב שלך</h3>
+            <p>
+              בטלוויזיה לוחצים <strong>״זיווג טלפון או מחשב חדש״</strong>. באותו מסך יש שתי
+              אפשרויות. בוחרים את הנוחה לך:
+            </p>
+            <div class="pair-options">
+              <div>
+                <span class="tag">הכי נוח בטלפון</span>
+                <h4>סורקים QR</h4>
+                <p>
+                  באפליקציית קרוב בטלפון לוחצים <strong>״סריקת QR מהטלוויזיה״</strong>. מאשרים גישה
+                  למצלמה, מכוונים ל־QR שעל הטלוויזיה ולוחצים <strong>״חיבור ושמירה״</strong>.
+                </p>
+              </div>
+              <div>
+                <span class="tag">בטלפון או במחשב</span>
+                <h4>מקלידים 8 ספרות</h4>
+                <p>
+                  בטלפון בוחרים <strong>״חיבור בקוד קצר״</strong>. במחשב פותחים
+                  <a href="https://tv.yosefapk.top/" target="_blank" rel="noopener"
+                    ><bdi>tv.yosefapk.top</bdi></a
+                  >
+                  ובוחרים ״חיבור מכשיר״. מקלידים את הקוד מהטלוויזיה ולוחצים
+                  <strong>״חיבור ושמירה״</strong>.
+                </p>
+              </div>
+            </div>
+            <p>
+              לכל טלפון או מחשב נוסף פותחים זיווג חדש בטלוויזיה. קוד תקף לעשר דקות ולמכשיר אחד; אחרי
+              חמישה ניסיונות קוד פותחים חדש או סורקים QR.
+            </p>
+            <p class="callout">
+              <strong>זה הכול לזיווג.</strong> המכשיר נשמר. בשימוש הבא לא צריך קוד, QR או זיווג
+              נוסף.
+            </p>
+            <figure class="pairing-figure">
+              <a href="assets/pairing.png" target="_blank" rel="noopener"
+                ><img
+                  src="assets/pairing.png"
+                  alt="טופס החיבור באתר המחשב עם שדה לקוד קצר וכפתור חיבור ושמירה"
+                  width="440"
+                  height="860"
+                  loading="lazy"
+              /></a>
+              <figcaption>
+                טופס החיבור באתר המחשב. באפליקציה בטלפון יש חלון הזנת קוד נייטיבי. בצילום אין קוד
+                פעיל.
+              </figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article id="check" class="step">
+          <span class="step-number" aria-hidden="true">07</span>
+          <div>
+            <h3>בודקים לפני שעוזבים את סבתא</h3>
+            <p>הסימונים נשמרים רק בדפדפן שלך. מסמנים רק בדיקה שביצעת בסטרימר האמיתי.</p>
+            <div class="checklist">
+              <label
+                ><input type="checkbox" data-check="cellular" /><span
+                  >כיביתי Wi-Fi בטלפון והתחברתי דרך גלישה סלולרית. ראיתי את מסך הסטרימר.</span
+                ></label
+              >
+              <label
+                ><input type="checkbox" data-check="controls" /><span
+                  >בדקתי בית, חזרה, חצים, פתיחת אפליקציית yes וחיפוש בתוכן הרצוי.</span
+                ></label
+              >
+              <label
+                ><input type="checkbox" data-check="tv-restart" /><span
+                  >אתחלתי את הסטרימר. החיבור והתמונה חזרו בלי פעולה בטלוויזיה.</span
+                ></label
+              >
+              <label
+                ><input type="checkbox" data-check="server-restart" /><span
+                  >בדקתי חיבור אחרי הפעלה מחדש של שירות קרוב בשרת. הזיווג נשמר.</span
+                ></label
+              >
+              <label
+                ><input type="checkbox" data-check="overnight" /><span
+                  >בדקתי חיבור אחרי שהסטרימר נשאר במצב המתנה למשך לילה.</span
+                ></label
+              >
+            </div>
+            <p id="check-progress" class="progress" role="status">
+              0 מתוך 5 בדיקות הושלמו בדפדפן הזה
+            </p>
+            <p class="small">
+              אתחול שירות קרוב אינו מוכיח אתחול של כל השרת הביתי. בדיקת אתחול המארח עצמו עדיין נדרשת
+              בזמן שמתאים לך ולשירותים האחרים שלו.
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <section id="daily" class="daily">
+        <div class="wrap daily-grid">
+          <div>
+            <p class="eyebrow">מכאן והלאה</p>
+            <h2>פותחים. מתחברים.<br />עוזרים לה.</h2>
+            <p>
+              בטלפון פותחים את אפליקציית <strong>״קרוב״</strong>. אם נשמרה טלוויזיה אחרונה,
+              האפליקציה מתחברת אליה; אחרת לוחצים ״התחברות״ ליד הטלוויזיה הרצויה. במחשב פותחים את
+              האתר.
+            </p>
+            <p>
+              מהשלט אפשר לנווט, לפתוח אפליקציות ולכתוב בעברית בשדה חיפוש נגיש. לחיצה על התמונה פותחת
+              אותה במסך מלא.
+            </p>
+            <p>
+              בסיום לוחצים ״סיום עזרה״. רק מכשיר אחד שולט בכל רגע. כשהאפליקציה בטלפון עוברת לרקע היא
+              משחררת את החיבור; כשחוזרים אליה היא מתחברת מחדש.
+            </p>
+            <a class="button primary" href="https://tv.yosefapk.top/" target="_blank" rel="noopener"
+              >למרכז השליטה במחשב <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <div class="daily-card">
+            <span class="big-number">בלי קוד<br />בכל כניסה.</span>
+            <p>הזיווג נשמר במכשיר שלך ובסטרימר. אחרי ההכנה, אין צורך ב־Wi-Fi משותף.</p>
+            <hr />
+            <p>
+              אם סבתא תרצה להפסיק את הגישה, אפשר להשהות את העזרה או לבטל מכשירים מורשים מתוך קרוב
+              בטלוויזיה.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="answers" class="wrap section answers">
+        <div class="section-title">
+          <p class="eyebrow">כדאי לדעת</p>
+          <h2>כמה תשובות לפני שמתחילים.</h2>
+        </div>
+        <details>
+          <summary>צריך עוד שרת? והמחשב שלי חייב להישאר דלוק?</summary>
+          <p>
+            השירות כבר פועל בשרת הביתי שלך. הוא מחבר בין הטלפון והסטרימר גם כשהם ברשתות שונות. המחשב
+            האישי אינו חייב להישאר דלוק, אבל השרת הביתי, הסטרימר וחיבורי האינטרנט שלהם צריכים לפעול.
+          </p>
+        </details>
+        <details>
+          <summary>סבתא תצטרך לאשר בכל פעם?</summary>
+          <p>
+            זו בדיוק המטרה להימנע ממנה. בהכנה הראשונה אתה מאשר את ההרשאות. במסלולי השליטה הקבועה
+            שנבדקו, הכניסה והחזרה אחרי אתחול אינן דורשות אישור חדש. עדיין צריך לוודא שהמסלול הזה
+            נתמך בסטרימר yes המסוים שלה. לא הוסרו או נעקפו בקשות הרשאה של Android.
+          </p>
+        </details>
+        <details>
+          <summary>למה תמונה שחורה בתוך סרט?</summary>
+          <p>
+            תכנים מוגנים ואפליקציות מסוימות חוסמים צילום. קרוב אינה עוקפת הגנת תוכן. אפשר לנסות
+            לנווט באמצעות השלט ולעזור בתפריטים. התצוגה היא צילומי מסך מתעדכנים לצורך עזרה, ללא קול
+            וללא וידאו חלק.
+          </p>
+        </details>
+        <details>
+          <summary>הקוד לא התקבל — מה עושים?</summary>
+          <p>
+            בודקים את שמונה הספרות. אם עברו עשר דקות, השתמשו בקוד כבר או נוסו חמישה ניסיונות, סוגרים
+            את חלון הזיווג ופותחים חדש בטלוויזיה. אפשר גם לסרוק את ה־QR. קוד קצר מחייב גרסת קרוב
+            1.0.1 ומעלה בסטרימר.
+          </p>
+        </details>
+        <details>
+          <summary>מה נבדק ומה מחכה לבדיקה אצל סבתא?</summary>
+          <p>
+            נבדקו צילום ושליטה באמולטורים, זיווג ושמירה בטלפון ובמחשב, חזרה אחרי אתחול סטרימר והפעלה
+            מחדש של שירות קרוב, והתחברות במצב המתנה. האפליקציה הנייטיבית לטלפון נבדקה עם קוד קצר,
+            צילום ושליטה, הקלדה בעברית, שמירת זיווג וסריקת QR במצלמה מדומה. החיבורים עברו דרך האתר
+            הציבורי.
+          </p>
+          <p>
+            הסטרימר הפיזי של yes עדיין לא היה זמין. חיבור בסלולר אמיתי, אפליקציות yes, לילה במצב
+            המתנה והדלקת מסך הטלוויזיה דרך HDMI עדיין דורשים בדיקה שם. אין הבטחה לחיבור בשנייה אחת
+            בכל רשת.
+          </p>
+          <p>
+            <a
+              href="https://github.com/yosefhalp/universal-tv-remote/blob/feat/android-tv-family-support/support/VERIFY.md"
+              target="_blank"
+              rel="noopener"
+              >דוח הבדיקות המפורט במאגר ←</a
+            >
+          </p>
+        </details>
+      </section>
+    </main>
+    <footer class="wrap footer">
+      <div><strong>קרוב.</strong><span>7 בנובמבר 2026 · סטרימר 1.0.1 · טלפון 1.0.0</span></div>
+      <a href="https://github.com/yosefhalp/universal-tv-remote" target="_blank" rel="noopener"
+        >הפרויקט שלך ב־GitHub ↗</a
+      >
+    </footer>
+    <div id="copy-status" class="toast" role="status" hidden></div>
+  </body>
+</html>

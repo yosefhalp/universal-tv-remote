@@ -69,6 +69,7 @@ public final class Crypto {
     public static final class Session {
         private final String transcript;
         private final byte[] proofKey, clientKey, agentKey;
+        private final boolean clientSide;
         private long sent = 0, received = 0;
 
         public Session(
@@ -78,6 +79,19 @@ public final class Crypto {
                 String clientNonce,
                 String agentNonce)
                 throws Exception {
+            this(secret, device, controller, clientNonce, agentNonce, false);
+        }
+
+        // אותו פרוטוקול משמש בשני ה-APK. רק כיוון המפתחות משתנה בין הטלפון לסטרימר.
+        public Session(
+                String secret,
+                String device,
+                String controller,
+                String clientNonce,
+                String agentNonce,
+                boolean clientSide)
+                throws Exception {
+            this.clientSide = clientSide;
             if (!validId(device) || !("pair".equals(controller) || validId(controller)))
                 throw new Exception("BAD_ID");
             byte[] salt = new byte[64];
@@ -127,7 +141,11 @@ public final class Crypto {
                     .put(
                             "b",
                             b64(
-                                    cipher(Cipher.ENCRYPT_MODE, agentKey, "agent", sequence)
+                                    cipher(
+                                                    Cipher.ENCRYPT_MODE,
+                                                    clientSide ? clientKey : agentKey,
+                                                    clientSide ? "client" : "agent",
+                                                    sequence)
                                             .doFinal(raw)));
         }
 
@@ -138,7 +156,11 @@ public final class Crypto {
                     || ((Number) sequence).doubleValue() != received)
                 throw new Exception("REPLAY_OR_ORDER");
             byte[] raw =
-                    cipher(Cipher.DECRYPT_MODE, clientKey, "client", received)
+                    cipher(
+                                    Cipher.DECRYPT_MODE,
+                                    clientSide ? agentKey : clientKey,
+                                    clientSide ? "agent" : "client",
+                                    received)
                             .doFinal(decode(value.getString("b"), 0));
             JSONObject result = new JSONObject(new String(raw, StandardCharsets.UTF_8));
             received++;

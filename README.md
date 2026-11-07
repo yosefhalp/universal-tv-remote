@@ -2,7 +2,7 @@
 
 **English** | [עברית](README.he.md)
 
-**קרוב — שליטה משפחתית ב־Android TV דרך האינטרנט:** [התקנה, תאימות ובדיקות](support/README.md). תוספת עם APK לסטרימר וממשק לטלפון ולמחשב; בנפרד מאפליקציית המחשב המקורית המתוארת בהמשך.
+**קרוב — שליטה משפחתית ב־Android TV דרך האינטרנט:** [התקנה, תאימות ובדיקות](support/README.md). תוספת עם APK לסטרימר, אפליקציית Android נייטיב לטלפון ואתר למחשב; בנפרד מאפליקציית המחשב המקורית המתוארת בהמשך.
 
 A Windows desktop app that controls your smart TV from your computer: LG, Samsung, Android TV and Google TV (Sony, Philips, TCL, Xiaomi and others), Roku, Vizio and Sony BRAVIA. It offers an on-screen remote, apps, inputs, typing and volume. On LG TVs it also shows the TV's screen in the app and controls a mouse pointer.
 

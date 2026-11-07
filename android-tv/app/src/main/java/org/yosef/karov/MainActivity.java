@@ -167,7 +167,8 @@ public final class MainActivity extends Activity {
         text("עזרה משפחתית בטלוויזיה", 21);
         state = text(SupportService.status, 14);
         text(
-                "בהכנה הראשונה מזווגים את הטלפון או המחשב של בן המשפחה. לאחר מכן הוא יכול לעזור מרחוק. אפשר להשהות את העזרה ולבטל גישה בכל רגע.",
+                "בהכנה הראשונה מזווגים את הטלפון או המחשב של בן המשפחה. לאחר מכן הוא יכול לעזור"
+                        + " מרחוק. אפשר להשהות את העזרה ולבטל גישה בכל רגע.",
                 15);
         name = field(vault.get("name"), "שם הטלוויזיה", false);
         server = field(vault.get("server"), "https://כתובת-השרת", true);
@@ -206,19 +207,26 @@ public final class MainActivity extends Activity {
                 });
         button("2 · הפעלת נגישות לשליטה ולצילום", () -> SystemSettings.open(this, true));
         text(
-                "בחרו ברשימה ״קרוב — עזרה משפחתית״ ואשרו. אם Android חוסם אפליקציה שהותקנה מקובץ, יש לאפשר אותה תחילה במסך פרטי האפליקציה. ההרשאה מאפשרת צפייה ופעולות רק למכשירים שזיווגתם.",
+                "בחרו ברשימה ״קרוב — עזרה משפחתית״ ואשרו. אם Android חוסם אפליקציה שהותקנה מקובץ,"
+                        + " יש לאפשר אותה תחילה במסך פרטי האפליקציה. ההרשאה מאפשרת צפייה ופעולות רק"
+                        + " למכשירים שזיווגתם.",
                 13);
         button("3 · זיווג טלפון או מחשב", this::showPairing);
         button("התחלת שיתוף מסך עם אישור", this::requestCapture);
         text(
                 Build.VERSION.SDK_INT >= 30
-                        ? "בגרסה זו נבדק תחילה צילום דרך נגישות, ללא בקשת שיתוף בכל חיבור. אם היצרן מגביל צילום, אפשר להפעיל שיתוף מסך באישור."
+                        ? "בגרסה זו נבדק תחילה צילום דרך נגישות, ללא בקשת שיתוף בכל חיבור. אם היצרן"
+                                + " מגביל צילום, אפשר להפעיל שיתוף מסך באישור."
                         : Build.VERSION.SDK_INT == 28
-                                ? "אם חלון שיתוף המסך מציע שמירת אישור קבוע, אפשר לבחור בה בהכנה הראשונה. קרוב תחדש את השיתוף אחרי אתחול רק אם Android עדיין מאשרת זאת. יש לבדוק גם את השליטה בחצים בדגם הזה."
-                                : "בגרסה זו שיתוף מסך רגיל דורש אישור בתחילת השיתוף. מסלול השליטה הנוספת עשוי לאפשר צילום קבוע ללא אישור חוזר.",
+                                ? "אם חלון שיתוף המסך מציע שמירת אישור קבוע, אפשר לבחור בה בהכנה"
+                                        + " הראשונה. קרוב תחדש את השיתוף אחרי אתחול רק אם Android"
+                                        + " עדיין מאשרת זאת. יש לבדוק גם את השליטה בחצים בדגם הזה."
+                                : "בגרסה זו שיתוף מסך רגיל דורש אישור בתחילת השיתוף. מסלול השליטה"
+                                        + " הנוספת עשוי לאפשר צילום קבוע ללא אישור חוזר.",
                 13);
         text(
-                "בגרסאות Android ישנות אפשר להפעיל שליטה נוספת דרך ניפוי שגיאות ברשת. נדרשת הכנה ראשונית באפשרויות המפתחים ואישור קבוע של מפתח קרוב בטלוויזיה.",
+                "בגרסאות Android ישנות אפשר להפעיל שליטה נוספת דרך ניפוי שגיאות ברשת. נדרשת הכנה"
+                        + " ראשונית באפשרויות המפתחים ואישור קבוע של מפתח קרוב בטלוויזיה.",
                 13);
         button(
                 "חיבור שליטה נוספת (ADB מקומי)",
@@ -253,7 +261,8 @@ public final class MainActivity extends Activity {
                                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 });
         text(
-                "השליטה עוברת בחיבור מוצפן. תוכן מוגן עשוי לא להופיע בצילום. כיבוי הסטרימר או ניתוק החשמל מנתקים גם את העזרה.",
+                "השליטה עוברת בחיבור מוצפן. תוכן מוגן עשוי לא להופיע בצילום. כיבוי הסטרימר או ניתוק"
+                        + " החשמל מנתקים גם את העזרה.",
                 13);
     }
 
@@ -262,7 +271,8 @@ public final class MainActivity extends Activity {
         text(vault.enabled() ? "עזרה מרחוק מופעלת." : "העזרה מושהית.", 36);
         state = text(SupportService.status, 15);
         text(
-                "אחרי הזיווג הראשון, בן המשפחה מתחבר מהטלפון או מהמחשב שלו. אפשר להמשיך לצפות כרגיל.",
+                "אחרי הזיווג הראשון, בן המשפחה מתחבר מהטלפון או מהמחשב שלו. אפשר להמשיך לצפות"
+                        + " כרגיל.",
                 17);
         button(
                 "חזרה לטלוויזיה",
@@ -309,6 +319,7 @@ public final class MainActivity extends Activity {
         }
         try {
             String url = vault.pairing();
+            startForegroundService(new Intent(this, SupportService.class).setAction("pair"));
             LinearLayout panel = new LinearLayout(this);
             panel.setOrientation(LinearLayout.VERTICAL);
             panel.setPadding(dp(20), dp(10), dp(20), dp(10));
@@ -321,25 +332,62 @@ public final class MainActivity extends Activity {
                     bitmap.setPixel(x, y, bits.get(x, y) ? Color.BLACK : Color.WHITE);
             qr.setImageBitmap(bitmap);
             qr.setContentDescription("קוד זיווג לסריקה בטלפון");
-            panel.addView(qr, new LinearLayout.LayoutParams(dp(250), dp(250)));
+            panel.addView(qr, new LinearLayout.LayoutParams(dp(190), dp(190)));
             TextView help = new TextView(this);
             help.setText(
-                    "סורקים בטלפון של בן המשפחה, ואז לוחצים על חיבור ושמירה.\nהקישור תקף לעשר דקות ולמכשיר אחד בלבד.");
+                    "סורקים בטלפון ולוחצים על חיבור ושמירה.\n"
+                            + "או פותחים את הכתובת הבאה ומקלידים את הקוד:");
             help.setTextSize(16);
             help.setGravity(Gravity.CENTER);
             panel.addView(help);
             TextView link = new TextView(this);
-            link.setText(url);
-            link.setTextSize(10);
+            link.setText(vault.get("server"));
+            link.setTextSize(18);
             link.setTextDirection(View.TEXT_DIRECTION_LTR);
             link.setTextIsSelectable(true);
             panel.addView(link);
-            new AlertDialog.Builder(this)
-                    .setTitle("זיווג מכשיר חדש")
-                    .setView(panel)
-                    .setPositiveButton("סגירה", (d, w) -> bitmap.recycle())
-                    .setOnCancelListener(d -> bitmap.recycle())
-                    .show();
+            TextView code = new TextView(this);
+            code.setTextSize(28);
+            code.setGravity(Gravity.CENTER);
+            code.setTextDirection(View.TEXT_DIRECTION_LTR);
+            code.setTypeface(android.graphics.Typeface.MONOSPACE);
+            panel.addView(code);
+            TextView expiry = new TextView(this);
+            expiry.setText("למכשיר אחד, לעשר דקות. לאחר הזיווג לא צריך להזין קוד שוב.");
+            expiry.setTextSize(14);
+            expiry.setGravity(Gravity.CENTER);
+            panel.addView(expiry);
+            AlertDialog dialog =
+                    new AlertDialog.Builder(this)
+                            .setTitle("זיווג מכשיר חדש")
+                            .setView(panel)
+                            .setPositiveButton("סגירה", null)
+                            .show();
+            Handler updates = new Handler(Looper.getMainLooper());
+            Runnable refresh =
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            SupportService service = SupportService.instance;
+                            String label =
+                                    service == null
+                                            ? "ממתינים לחיבור לשרת…"
+                                            : service.pairingLabel();
+                            // אין לעורר אירועי נגישות שוב ושוב כשלא השתנה דבר במסך הזיווג.
+                            if (!android.text.TextUtils.equals(code.getText(), label)) {
+                                code.setText(label);
+                                code.setTextSize(
+                                        label.matches("[0-9]{2}-[0-9]{3}-[0-9]{3}") ? 28 : 14);
+                            }
+                            if (dialog.isShowing()) updates.postDelayed(this, 500);
+                        }
+                    };
+            dialog.setOnDismissListener(d -> {
+                updates.removeCallbacks(refresh);
+                qr.setImageDrawable(null);
+                bitmap.recycle();
+            });
+            refresh.run();
         } catch (Exception error) {
             toast("לא ניתן ליצור זיווג כרגע");
         }

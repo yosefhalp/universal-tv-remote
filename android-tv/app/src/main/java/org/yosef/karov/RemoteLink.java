@@ -25,13 +25,18 @@ public final class RemoteLink {
                     .build();
     private WebSocket socket;
     private Crypto.Session cipher;
+    private PairingWindow pairing;
+    private SrpExchange srp;
+    private String pairingVersion = "", clientNonce = "", serverNonce = "";
+    private volatile String pairingLabel = "מכינים קוד קצר…";
     private String controller;
     private boolean authenticated = false;
+    private boolean codeAttempt = false;
     private volatile boolean stopped = false;
     private volatile long epoch = 0;
     private long blockedUntil = 0;
     private int failures = 0, retry = 0, inFlight = 0;
-    private ScheduledFuture<?> reconnect, authenticationTimeout;
+    private ScheduledFuture<?> reconnect, authenticationTimeout, pairingExpiry;
 
     public RemoteLink(Vault vault, DeviceActions actions, Listener listener) {
         this.vault = vault;
@@ -41,6 +46,76 @@ public final class RemoteLink {
 
     public void start() {
         worker.execute(this::connect);
+    }
+
+    public String pairingLabel() {
+        return pairingLabel;
+    }
+
+    public void beginPairing() {
+        dispatch(() -> {
+            try {
+                if ("pair".equals(controller) || srp != null) {
+                    simple("kick");
+                    endSession();
+                }
+                clearPairing();
+                pairing =
+                        new PairingWindow(
+                                vault.secretFor("pair"), Long.parseLong(vault.get("pairExpires")));
+                pairing.request = Crypto.id();
+                advertisePairing();
+                pairingExpiry =
+                        worker.schedule(
+                                this::clearPairing,
+                                Math.max(1, pairing.expires - System.currentTimeMillis()),
+                                TimeUnit.MILLISECONDS);
+            } catch (Exception error) {
+                clearPairing();
+            }
+        });
+    }
+
+    private void clearPairing() {
+        pairing = null;
+        pairingLabel = "הקוד אינו פעיל. לזיווג נוסף פתחו קוד חדש";
+        if (pairingExpiry != null) pairingExpiry.cancel(false);
+        simple("pair-clear");
+    }
+
+    private void advertisePairing() {
+        if (pairing == null) return;
+        try {
+            if (!pairing.valid(vault.secretFor("pair"), System.currentTimeMillis())) {
+                clearPairing();
+                return;
+            }
+            if (!pairing.available()) return;
+            pairing.registered = false;
+            pairingLabel = "מכינים קוד קצר… אפשר כבר לסרוק את ה-QR";
+            send(
+                    new JSONObject()
+                            .put("t", "pair-register")
+                            .put("request", pairing.request)
+                            .put("prefix", pairing.prefix)
+                            .put("expires", pairing.expires)
+                            .put("name", vault.get("name")));
+            PairingWindow current = pairing;
+            worker.schedule(
+                    () -> {
+                        if (pairing == current && !current.registered)
+                            pairingLabel = "אין קוד קצר כרגע. אפשר לסרוק QR או לפתוח זיווג מחדש";
+                    },
+                    8,
+                    TimeUnit.SECONDS);
+        } catch (Exception error) {
+            clearPairing();
+        }
+    }
+
+    private boolean authorized() throws Exception {
+        String current = vault.secretFor(controller);
+        return !current.isEmpty() && (!"pair".equals(controller) || current.equals(pairingVersion));
     }
 
     public void networkAvailable() {
@@ -80,6 +155,7 @@ public final class RemoteLink {
                                     }
                                     retry = 0;
                                     listener.state("מוכן לעזרה מרחוק", false);
+                                    advertisePairing();
                                 });
                             }
 
@@ -119,6 +195,10 @@ public final class RemoteLink {
     private void lost(WebSocket ws) {
         if (ws != socket) return;
         socket = null;
+        if (pairing != null) {
+            pairing.registered = false;
+            pairingLabel = "ממתינים לחזרת חיבור האינטרנט…";
+        }
         endSession();
         listener.state("אין חיבור. ננסה שוב אוטומטית", false);
         if (!stopped)
@@ -147,8 +227,11 @@ public final class RemoteLink {
     private void endSession() {
         epoch++;
         cipher = null;
+        srp = null;
+        pairingVersion = clientNonce = serverNonce = "";
         controller = null;
         authenticated = false;
+        codeAttempt = false;
         inFlight = 0;
         if (authenticationTimeout != null) authenticationTimeout.cancel(false);
         actions.active(false);
@@ -156,8 +239,9 @@ public final class RemoteLink {
     }
 
     private void reject() {
-        failures++;
-        if (failures >= 5)
+        // לקוד הקצר יש מכסה נפרדת של חמישה ניסיונות. טעות בו אינה חוסמת מכשיר שכבר מורשה.
+        if (!codeAttempt) failures++;
+        if (!codeAttempt && failures >= 5)
             blockedUntil =
                     android.os.SystemClock.elapsedRealtime()
                             + Math.min(300000, 30000L << Math.min(failures - 5, 3));
@@ -175,6 +259,26 @@ public final class RemoteLink {
             JSONObject value = new JSONObject(text);
             String type = value.optString("t");
             if (type.equals("pong")) return;
+            if (type.equals("pair-code")) {
+                if (pairing == null
+                        || pairing.registered
+                        || !pairing.request.equals(value.optString("request"))) return;
+                if (!pairing.valid(vault.secretFor("pair"), System.currentTimeMillis())) {
+                    clearPairing();
+                    return;
+                }
+                String prefix = value.optString("prefix");
+                if (!prefix.matches("[0-9]{2}")) {
+                    pairingLabel = "הקוד הקצר אינו זמין כרגע. אפשר לסרוק QR";
+                    return;
+                }
+                pairing.prefix = prefix;
+                pairing.registered = true;
+                String code = pairing.code();
+                pairingLabel =
+                        code.substring(0, 2) + "-" + code.substring(2, 5) + "-" + code.substring(5);
+                return;
+            }
             if (type.equals("peer-left")) {
                 endSession();
                 return;
@@ -191,8 +295,69 @@ public final class RemoteLink {
                                 TimeUnit.SECONDS);
                 return;
             }
+            if (type.equals("code-hello")) {
+                codeAttempt = true;
+                if (cipher != null
+                        || srp != null
+                        || authenticated
+                        || value.optInt("v") != 1
+                        || android.os.SystemClock.elapsedRealtime() < blockedUntil
+                        || pairing == null
+                        || !pairing.attempt(
+                                vault.secretFor("pair"),
+                                value.optString("prefix"),
+                                System.currentTimeMillis())) {
+                    reject();
+                    return;
+                }
+                // ניסיון נספר לפני החישוב, גם אם הלקוח נעלם או שולח ערך פגום.
+                if (!pairing.available()) {
+                    simple("pair-clear");
+                    pairingLabel = "נוצלו ניסיונות הקוד. סרקו QR או פתחו קוד חדש";
+                }
+                controller = "pair";
+                pairingVersion = pairing.version;
+                clientNonce = value.getString("nonce");
+                Crypto.decode(clientNonce, 32);
+                serverNonce = Crypto.secret();
+                srp =
+                        new SrpExchange(
+                                "karov:" + vault.get("device"),
+                                pairing.code(),
+                                value.getString("A"));
+                send(
+                        new JSONObject()
+                                .put("t", "code-challenge")
+                                .put("salt", Crypto.b64(srp.salt))
+                                .put("B", srp.publicValue)
+                                .put("nonce", serverNonce));
+                return;
+            }
+            if (type.equals("code-proof") && srp != null && cipher == null && !authenticated) {
+                if (!authorized()) {
+                    reject();
+                    return;
+                }
+                byte[][] result = srp.finish(value.getString("proof"));
+                srp = null;
+                cipher =
+                        new Crypto.Session(
+                                Crypto.b64(result[1]),
+                                vault.get("device"),
+                                "pair",
+                                clientNonce,
+                                serverNonce);
+                authenticated = true;
+                failures = 0;
+                if (authenticationTimeout != null) authenticationTimeout.cancel(false);
+                send(new JSONObject().put("t", "code-proof").put("proof", Crypto.b64(result[0])));
+                send(
+                        cipher.seal(
+                                new JSONObject().put("type", "ready").put("info", actions.info())));
+                return;
+            }
             if (type.equals("hello")) {
-                if (cipher != null || authenticated || value.optInt("v") != 1) {
+                if (cipher != null || srp != null || authenticated || value.optInt("v") != 1) {
                     reject();
                     return;
                 }
@@ -220,6 +385,7 @@ public final class RemoteLink {
                                 value.getString("nonce"),
                                 nonce);
                 controller = requested;
+                if (controller.equals("pair")) pairingVersion = secret;
                 send(
                         new JSONObject()
                                 .put("t", "challenge")
@@ -228,8 +394,7 @@ public final class RemoteLink {
                 return;
             }
             if (type.equals("auth") && cipher != null && !authenticated) {
-                if (vault.secretFor(controller).isEmpty()
-                        || !cipher.verify("client", value.getString("proof"))) {
+                if (!authorized() || !cipher.verify("client", value.getString("proof"))) {
                     reject();
                     return;
                 }
@@ -265,10 +430,7 @@ public final class RemoteLink {
                 }
                 return;
             }
-            if (!type.equals("data")
-                    || !authenticated
-                    || cipher == null
-                    || vault.secretFor(controller).isEmpty()) {
+            if (!type.equals("data") || !authenticated || cipher == null || !authorized()) {
                 reject();
                 return;
             }
@@ -289,10 +451,12 @@ public final class RemoteLink {
                     return;
                 }
                 vault.enroll(
+                        pairingVersion,
                         args.getString("controller"),
                         args.getString("secret"),
                         args.optString("name", "מכשיר משפחתי"));
                 reply(session, id, true, null);
+                clearPairing();
                 worker.schedule(
                         () -> {
                             if (cipher == session) {
@@ -374,6 +538,13 @@ public final class RemoteLink {
 
     public void disconnectController() {
         dispatch(() -> {
+            try {
+                if (pairing != null
+                        && !pairing.valid(vault.secretFor("pair"), System.currentTimeMillis()))
+                    clearPairing();
+            } catch (Exception ignored) {
+                clearPairing();
+            }
             simple("kick");
             endSession();
         });
@@ -383,6 +554,7 @@ public final class RemoteLink {
         dispatch(() -> {
             stopped = true;
             if (reconnect != null) reconnect.cancel(false);
+            clearPairing();
             endSession();
             if (socket != null) {
                 socket.cancel();

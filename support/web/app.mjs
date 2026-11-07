@@ -1,6 +1,7 @@
 import { Connection } from './connection.mjs';
 import { decodePairing, importSecret, randomId, randomSecret, validId } from './protocol.mjs';
 import { savedDevices, saveDevice, forgetDevice } from './store.mjs';
+import { normalizeCode } from './srp.mjs';
 
 const $ = (id) => document.getElementById(id);
 let connection,
@@ -20,6 +21,11 @@ const messages = {
   EXPIRED: 'תוקף הזיווג הסתיים. פתחו קוד חדש בטלוויזיה.',
   PAIR_EXPIRED: 'תוקף הזיווג הסתיים. פתחו קוד חדש בטלוויזיה.',
   BAD_PAIRING: 'קישור הזיווג אינו תקין.',
+  BAD_CODE: 'מזינים את שמונה הספרות שמופיעות במסך הזיווג בטלוויזיה.',
+  CODE_NOT_FOUND: 'הקוד אינו זמין. בדקו את הספרות וודאו שמסך הזיווג פתוח בסטרימר מעודכן.',
+  CODE_LIMIT: 'בוצעו יותר מדי ניסיונות. המתינו דקה ונסו שוב.',
+  CODE_DENIED:
+    'הקוד לא התקבל. בדקו את הספרות ונסו שוב. אחרי חמישה ניסיונות יש לפתוח קוד חדש בטלוויזיה או לסרוק QR.',
   NETWORK: 'לא הצלחנו להתחבר לשרת. בדקו את חיבור האינטרנט.',
   CONNECT_TIMEOUT: 'החיבור מתעכב. ודאו שהסטרימר מחובר ונסו שוב.',
   DISCONNECTED: 'החיבור נותק. מנסים להתחבר מחדש…',
@@ -304,8 +310,7 @@ async function refreshControllers() {
     $('controllers').append(row);
   }
 }
-async function pair(value) {
-  const pairing = decodePairing(value);
+async function pair(pairing) {
   const button = $('pair-form').querySelector('button');
   button.disabled = true;
   status('מזווגים בבטחה…');
@@ -314,6 +319,7 @@ async function pair(value) {
     device: pairing.device,
     controller: 'pair',
     secret: pairing.secret,
+    code: pairing.code,
   });
   try {
     await temporary.connect();
@@ -343,6 +349,10 @@ async function pair(value) {
     temporary.close();
     pendingPair = null;
     $('pair-link').value = '';
+    $('pair-code').value = '';
+    $('code-entry').hidden = false;
+    $('qr-ready').hidden = true;
+    $('legacy-pair').hidden = false;
     await connectDevice(record);
   } catch (error) {
     temporary.close();
@@ -352,8 +362,13 @@ async function pair(value) {
     button.disabled = false;
   }
 }
+let pairingBusy = false;
 $('pair-form').addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (pairingBusy) return;
+  pairingBusy = true;
+  const button = $('pair-form').querySelector('button');
+  button.disabled = true;
   try {
     const input = $('pair-link').value.trim();
     let token = pendingPair;
@@ -362,15 +377,41 @@ $('pair-form').addEventListener('submit', async (event) => {
       if (url.origin !== location.origin) throw new Error('BAD_PAIRING');
       token = new URLSearchParams(url.hash.slice(1)).get('pair');
     }
-    await pair(token);
+    let pairing;
+    if (token) pairing = decodePairing(token);
+    else {
+      const code = normalizeCode($('pair-code').value);
+      // רק שתי ספרות האיתור מגיעות לשרת. הסוד נבדק ישירות מול הסטרימר דרך SRP.
+      const response = await fetch(`/v1/pair/${code.slice(0, 2)}`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) throw new Error(response.status === 429 ? 'CODE_LIMIT' : 'CODE_NOT_FOUND');
+      const found = await response.json();
+      if (
+        !validId(found.device) ||
+        !Number.isSafeInteger(found.expires) ||
+        found.expires <= Date.now()
+      )
+        throw new Error('PAIR_EXPIRED');
+      pairing = {
+        device: found.device,
+        name: String(found.name || 'הטלוויזיה').slice(0, 80),
+        code,
+      };
+    }
+    await pair(pairing);
   } catch (error) {
     notice(explain(error));
+  } finally {
+    pairingBusy = false;
+    button.disabled = false;
   }
 });
 $('disconnect').onclick = () => stop().catch((error) => notice(explain(error)));
 $('add-device').onclick = () => {
   $('pair-details').open = true;
-  $('pair-link').focus();
+  $('pair-code').focus();
 };
 for (const button of document.querySelectorAll('[data-key]'))
   button.onclick = () => action('key', { key: button.dataset.key });
@@ -489,8 +530,10 @@ async function readPairingLink() {
     const data = decodePairing(pendingPair);
     await stop();
     $('pair-details').open = true;
-    $('pair-link').required = false;
-    $('pair-link').placeholder = `קישור הזיווג של ${data.name} מוכן`;
+    $('code-entry').hidden = true;
+    $('legacy-pair').hidden = true;
+    $('qr-ready').hidden = false;
+    $('qr-ready').textContent = `הזיווג של ${data.name} מוכן. נשאר רק ללחוץ על חיבור ושמירה.`;
     // בסריקת QR בטלפון מציגים מיד את פעולת האישור, בלי לחפש אותה מתחת למסך הפתיחה.
     $('pair-details').scrollIntoView({ block: 'center' });
     notice('לחצו על חיבור ושמירה כדי לאשר זיווג למכשיר הזה.');
@@ -508,4 +551,4 @@ try {
   notice(messages[error.message] || error.message);
 }
 if ('serviceWorker' in navigator && location.protocol === 'https:')
-  navigator.serviceWorker.register('/sw.js?v=5').catch(() => {});
+  navigator.serviceWorker.register('/sw.js?v=6').catch(() => {});

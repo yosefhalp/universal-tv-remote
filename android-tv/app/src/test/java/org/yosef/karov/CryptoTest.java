@@ -8,6 +8,26 @@ import org.junit.Test;
 import java.nio.charset.StandardCharsets;
 
 public class CryptoTest {
+    @Test
+    public void nativePhoneUsesClientDirectionAndReadsAgentVector() throws Exception {
+        JSONObject f = fixture();
+        Crypto.Session client =
+                new Crypto.Session(
+                        f.getString("secret"),
+                        f.getString("device"),
+                        f.getString("controller"),
+                        f.getString("clientNonce"),
+                        f.getString("agentNonce"),
+                        true);
+        assertEquals(f.getString("clientProof"), client.proof("client"));
+        assertEquals(
+                f.getJSONObject("value").toString(),
+                client.open(f.getJSONObject("fromAgent")).toString());
+        Crypto.Session agent = session(f);
+        JSONObject command = new JSONObject().put("text", "שלום מהטלפון");
+        assertEquals(command.toString(), agent.open(client.seal(command)).toString());
+    }
+
     private JSONObject fixture() throws Exception {
         try (java.io.InputStream in = getClass().getResourceAsStream("/protocol-vector.json")) {
             return new JSONObject(new String(in.readAllBytes(), StandardCharsets.UTF_8));

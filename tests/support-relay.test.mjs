@@ -17,6 +17,53 @@ function open(url, options) {
 }
 const message = (ws) =>
   new Promise((resolve) => ws.once('message', (value) => resolve(JSON.parse(value.toString()))));
+test('מיפוי קוד נרשם רק מסוכן מאומת, אינו נשמר במטמון ונמחק בניתוק', async (t) => {
+  const registrationKey = randomSecret(),
+    device = randomId(),
+    token = randomSecret();
+  const server = await startServer({ port: 0, dataFile: null, registrationKey });
+  t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.port}`;
+  const agent = await open(`${base.replace('http', 'ws')}/v1/agent/${device}`, {
+    headers: { Authorization: `Bearer ${token}`, 'X-Karov-Enrollment': registrationKey },
+  });
+  const ack = message(agent);
+  agent.send(
+    JSON.stringify({
+      t: 'pair-register',
+      request: randomId(),
+      expires: Date.now() + 30000,
+      prefix: '12',
+      name: 'בדיקה',
+    }),
+  );
+  assert.equal((await ack).prefix, '12');
+  const lookup = await fetch(`${base}/v1/pair/12`);
+  assert.equal(lookup.headers.get('cache-control'), 'no-store');
+  assert.equal((await lookup.json()).device, device);
+  const joined = message(agent);
+  const client = await open(`${base.replace('http', 'ws')}/v1/client/${device}`);
+  await joined;
+  const marker = message(agent);
+  client.send(JSON.stringify({ t: 'pair-clear' }));
+  client.send(
+    JSON.stringify({
+      t: 'pair-register',
+      request: randomId(),
+      expires: Date.now() + 30000,
+      prefix: '99',
+    }),
+  );
+  client.send(JSON.stringify({ t: 'marker' }));
+  assert.equal((await marker).t, 'marker');
+  assert.equal((await fetch(`${base}/v1/pair/12`)).status, 200);
+  assert.equal((await fetch(`${base}/v1/pair/99`)).status, 404);
+  const closed = new Promise((resolve) => client.once('close', resolve));
+  agent.close();
+  await closed;
+  assert.equal((await fetch(`${base}/v1/pair/12`)).status, 404);
+  assert.equal((await fetch(`${base}/v1/pair/12345678`)).status, 404);
+});
 test('השרת דורש מפתח התקנה, שומר זהות ומעביר מידע בין מכשירים בלבד', async (t) => {
   const folder = await mkdtemp(join(tmpdir(), 'karov-test-')),
     file = join(folder, 'devices.json');

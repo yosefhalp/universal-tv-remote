@@ -8,7 +8,7 @@
     <title>קרוב — מרכז השליטה</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="app.webmanifest" />
-    <link rel="stylesheet" href="style.css?v=2" />
+    <link rel="stylesheet" href="style.css?v=3" />
     <script type="module" src="app.mjs"></script>
   </head>
   <body>
@@ -72,7 +72,7 @@
                 <div class="tv-stand"></div>
               </div>
               <h2>נוסיף את הטלוויזיה הראשונה</h2>
-              <p>פותחים את ״קרוב״ בסטרימר וסורקים את קוד הזיווג בטלפון שלך.</p>
+              <p>פותחים את ״קרוב״ בסטרימר. סורקים QR בטלפון, או מקלידים קוד קצר.</p>
               <span class="empty-step">הגדרה אחת. אחר כך פשוט מתחברים.</span>
             </div>
           </section>
@@ -81,19 +81,36 @@
             <h2>חיבור חדש</h2>
             <p>הזיווג נותן למכשיר שלך גישה למסך ולשלט. אפשר לצרף גם את המחשב.</p>
             <details id="pair-details">
-              <summary>הזנת קישור זיווג <span aria-hidden="true">↗</span></summary>
+              <summary>חיבור בקוד קצר <span aria-hidden="true">↗</span></summary>
               <form id="pair-form">
-                <label for="pair-link">קישור מהאפליקציה בטלוויזיה</label
-                ><textarea
-                  id="pair-link"
-                  dir="ltr"
-                  rows="2"
-                  autocomplete="off"
-                  spellcheck="false"
-                  required
-                  placeholder="https://…/#pair=…"
-                ></textarea
-                ><label for="controller-name">שם המכשיר שלך</label
+                <p id="qr-ready" role="status" hidden></p>
+                <div id="code-entry">
+                  <label for="pair-code">הקוד שמופיע בטלוויזיה</label>
+                  <input
+                    id="pair-code"
+                    class="pair-code"
+                    dir="ltr"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    maxlength="12"
+                    placeholder="00-000-000"
+                    aria-describedby="code-hint"
+                  />
+                  <p id="code-hint" class="hint">8 ספרות · לצירוף המכשיר פעם אחת בלבד</p>
+                </div>
+                <details id="legacy-pair">
+                  <summary>יש לי קישור זיווג</summary>
+                  <label for="pair-link">הדבקת קישור</label
+                  ><textarea
+                    id="pair-link"
+                    dir="ltr"
+                    rows="2"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="https://…/#pair=…"
+                  ></textarea>
+                </details>
+                <label for="controller-name">שם המכשיר שלך</label
                 ><input
                   id="controller-name"
                   maxlength="40"

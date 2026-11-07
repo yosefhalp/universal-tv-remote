@@ -111,11 +111,17 @@ public final class SupportService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        if (intent != null && "pair".equals(intent.getAction()) && link != null)
+            link.beginPairing();
         return START_STICKY;
     }
 
     public void disconnectController() {
         if (link != null) link.disconnectController();
+    }
+
+    public String pairingLabel() {
+        return link == null ? "ממתינים לחיבור לשרת…" : link.pairingLabel();
     }
 
     @Override
