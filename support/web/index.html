@@ -314,7 +314,9 @@
             </details>
             <details>
               <summary>שליטה נוספת לדגמים ישנים</summary>
-              <p class="hint">
+              <p id="adb-setup-hint" class="hint">
+                קודם מוודאים שקרוב מותקנת באחסון הפנימי של הסטרימר. אם היא על כונן USB,
+                מעבירים אותה דרך הגדרות האפליקציה לפני ההמשך; ניפוי שגיאות עלול לנתק את הכונן.
                 אם החצים אינם עובדים, אפשר לחבר ניפוי שגיאות מקומי. מפעילים מראש
                 ניפוי שגיאות ברשת בסטרימר, ואז מאשרים בטלוויזיה את המפתח של קרוב
                 ובוחרים באישור קבוע.
@@ -347,7 +349,7 @@
       ></div>
     </main>
     <footer>
-      <span>קרוב. גם מרחוק.</span><span class="mono">FAMILY REMOTE / 1.4.3</span>
+      <span>קרוב. גם מרחוק.</span><span class="mono">FAMILY REMOTE / 1.4.5</span>
     </footer>
     <dialog id="account-dialog" aria-labelledby="account-title">
       <div class="account-heading"><h2 id="account-title">החשבון שלי</h2><button id="account-close" class="quiet" aria-label="סגירת חלון החשבון">סגירה</button></div>
@@ -363,7 +365,15 @@
       </section>
       <section id="account-member" hidden>
         <p id="account-user"></p><p id="account-forced" hidden>המנהל איפס את הסיסמה. יש להחליף אותה לפני הגישה לטלוויזיות.</p>
-        <div class="dialog-actions"><button id="account-sync">סנכרון טלוויזיות</button><button id="account-logout" class="quiet">יציאה מהחשבון</button></div>
+        <p id="account-device-status" role="status"></p>
+        <div class="dialog-actions"><button id="account-sync" class="primary">סנכרון טלוויזיה לחשבון</button><button id="account-refresh" class="quiet">רענון הרשימה מהחשבון</button></div>
+        <section id="account-local-picker" hidden aria-labelledby="account-local-title">
+          <h3 id="account-local-title">איזו טלוויזיה לסנכרן?</h3>
+          <p>בחרו טלוויזיה ששמורה בדפדפן הזה. הכפתור יתחבר אליה ויוסיף אותה לחשבון, בלי למחוק את הזיווג המקומי. חיבור לטלוויזיה אחרת יסתיים.</p>
+          <p id="account-local-empty" hidden>אין זיווגים מקומיים בדפדפן הזה. אפשר לחבר טלוויזיה בקוד או ב־QR, או לבצע את הסנכרון בטלפון או בדפדפן שבו היא כבר שמורה.</p>
+          <div id="account-local-devices"></div>
+        </section>
+        <button id="account-logout" class="quiet">יציאה מהחשבון</button>
         <details id="account-password-details"><summary>החלפת סיסמה</summary><form id="account-password-form">
           <label for="account-current">סיסמה נוכחית</label><input id="account-current" type="password" autocomplete="current-password" minlength="8" maxlength="128" required />
           <label for="account-new">סיסמה חדשה</label><input id="account-new" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />

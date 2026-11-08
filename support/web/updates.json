@@ -2,22 +2,22 @@
   "schema": 1,
   "tv": {
     "applicationId": "org.yosef.karov",
-    "versionCode": 15,
-    "versionName": "1.4.3",
+    "versionCode": 16,
+    "versionName": "1.4.4",
     "minSdk": 28,
-    "bytes": 9184078,
-    "sha256": "b1372ccbf7a7a167990c4322db65c1a70a410cb90e64693866b4965bebb32fe5",
-    "path": "karov-tv-1.4.3.apk",
-    "notes": "עדכון הסטרימר דרך חלון ההתקנה הרשמי של Android; הורדה ברקע ללא התקנה אוטומטית, ושמירת הזיווגים."
+    "bytes": 9187594,
+    "sha256": "d9e171fc1e6bd56dd0710ae56c84fb77a6627ece0b46210792d1a6a45f063d68",
+    "path": "karov-tv-1.4.4.apk",
+    "notes": "בדיקת אחסון פנימי לפני שליטה נוספת, הנחיות העברה ושמירת הזיווגים; העדכון מותקן בחלון Android הרשמי."
   },
   "phone": {
     "applicationId": "org.yosef.karov.phone",
-    "versionCode": 12,
-    "versionName": "1.4.2",
+    "versionCode": 14,
+    "versionName": "1.4.3",
     "minSdk": 28,
-    "bytes": 12134545,
-    "sha256": "c481b682dd70d466f06261cd8eab8cf8e7634fb6258af31e891313586c517143",
-    "path": "karov-phone-1.4.2.apk",
-    "notes": "תיקון לחיצה וגלילה בסטרימרי Android 11 ללא מסך מגע; גרירה לפי יכולת המכשיר, הודעות ברורות וחיבור שליטה נוספת."
+    "bytes": 12153261,
+    "sha256": "3d2b29b5a66ca9ea15cceb7ed3abe643a7659c117f703c4938cefc3ba68a8f53",
+    "path": "karov-phone-1.4.3.apk",
+    "notes": "סנכרון טלוויזיה מהמסך הראשי לחשבון, הודעות התקדמות ואישור שמירה, הגנה על החלפת חשבון ובדיקת אחסון הסטרימר."
   }
 }

@@ -17,27 +17,37 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 final class PhoneVault {
+    private static final Object LOCK = new Object();
     private final SharedPreferences prefs;
     private final SecretKey key;
     private JSONObject data;
 
     PhoneVault(Context context) throws Exception {
         prefs = context.getSharedPreferences("paired-televisions", Context.MODE_PRIVATE);
-        KeyStore store = KeyStore.getInstance("AndroidKeyStore");
-        store.load(null);
-        if (!store.containsAlias("karov-phone-vault")) {
-            KeyGenerator generator =
-                    KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
-            generator.init(
-                    new KeyGenParameterSpec.Builder(
-                                    "karov-phone-vault",
-                                    KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
-                            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                            .build());
-            generator.generateKey();
+        synchronized (LOCK) {
+            KeyStore store = KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            if (!store.containsAlias("karov-phone-vault")) {
+                KeyGenerator generator =
+                        KeyGenerator.getInstance(
+                                KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+                generator.init(
+                        new KeyGenParameterSpec.Builder(
+                                        "karov-phone-vault",
+                                        KeyProperties.PURPOSE_ENCRYPT
+                                                | KeyProperties.PURPOSE_DECRYPT)
+                                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                                .build());
+                generator.generateKey();
+            }
+            key = (SecretKey) store.getKey("karov-phone-vault", null);
+            load();
         }
-        key = (SecretKey) store.getKey("karov-phone-vault", null);
+    }
+
+    // כל מופע קורא את המסמך העדכני תחת אותה נעילה, כדי שמסך ישן לא ידרוס חשבון חדש.
+    private void load() throws Exception {
         String sealed = prefs.getString("sealed", "");
         if (sealed.isEmpty()) data = new JSONObject().put("devices", new JSONObject());
         else {
@@ -68,99 +78,202 @@ final class PhoneVault {
         data = next;
     }
 
-    synchronized JSONArray devices() throws Exception {
-        JSONArray result = new JSONArray();
-        JSONObject devices = data.getJSONObject("devices");
-        for (java.util.Iterator<String> ids = devices.keys(); ids.hasNext(); ) {
-            String id = ids.next();
-            // הרשימה לתצוגה אינה כוללת סודות; הם נקראים רק בעת פתיחת חיבור.
-            result.put(
-                    new JSONObject()
-                            .put("device", id)
-                            .put("name", devices.getJSONObject(id).getString("name")));
+    JSONArray devices() throws Exception {
+        synchronized (LOCK) {
+            load();
+            JSONArray result = new JSONArray();
+            JSONObject devices = data.getJSONObject("devices");
+            for (java.util.Iterator<String> ids = devices.keys(); ids.hasNext(); ) {
+                String id = ids.next();
+                // הרשימה לתצוגה אינה כוללת סודות; הם נקראים רק בעת פתיחת חיבור.
+                result.put(
+                        new JSONObject()
+                                .put("device", id)
+                                .put("name", devices.getJSONObject(id).getString("name")));
+            }
+            return result;
         }
-        return result;
     }
 
-    synchronized JSONObject get(String device) throws Exception {
-        JSONObject value = data.getJSONObject("devices").optJSONObject(device);
-        return value == null ? null : new JSONObject(value.toString());
+    JSONObject get(String device) throws Exception {
+        synchronized (LOCK) {
+            load();
+            JSONObject value = data.getJSONObject("devices").optJSONObject(device);
+            return value == null ? null : new JSONObject(value.toString());
+        }
     }
 
-    synchronized void put(JSONObject record) throws Exception {
-        if (!Crypto.validId(record.getString("device"))
-                || !Crypto.validId(record.getString("controller"))) throw new Exception("BAD_ID");
-        Crypto.decode(record.getString("secret"), 32);
-        JSONObject next = new JSONObject(data.toString());
-        next.getJSONObject("devices")
-                .put(record.getString("device"), new JSONObject(record.toString()));
-        save(next);
-    }
-
-    synchronized void remove(String id) throws Exception {
-        JSONObject next = new JSONObject(data.toString());
-        next.getJSONObject("devices").remove(id);
-        if (id.equals(next.optString("last"))) next.remove("last");
-        save(next);
-    }
-
-    synchronized String last() {
-        return data.optString("last", "");
-    }
-
-    synchronized void last(String id) throws Exception {
-        JSONObject next = new JSONObject(data.toString()).put("last", id);
-        save(next);
-    }
-
-    // החשבון נשמר בנפרד מהזיווגים המקומיים, בתוך אותה כספת מוצפנת של Android.
-    synchronized JSONObject accountSession() throws Exception {
-        JSONObject session = data.optJSONObject("accountSession");
-        return session == null ? null : new JSONObject(session.toString());
-    }
-
-    synchronized void accountSession(JSONObject session) throws Exception {
-        JSONObject next = new JSONObject(data.toString());
-        next.remove("accountDevices");
-        if (session == null) next.remove("accountSession");
-        else next.put("accountSession", new JSONObject(session.toString()));
-        save(next);
-    }
-
-    synchronized void accountUser(JSONObject user) throws Exception {
-        JSONObject next = new JSONObject(data.toString());
-        next.getJSONObject("accountSession").put("user", new JSONObject(user.toString()));
-        if (user.optBoolean("mustChangePassword")) next.remove("accountDevices");
-        save(next);
-    }
-
-    synchronized JSONArray accountDevices() throws Exception {
-        JSONArray values = data.optJSONArray("accountDevices");
-        return values == null ? new JSONArray() : new JSONArray(values.toString());
-    }
-
-    synchronized void accountDevices(JSONArray values) throws Exception {
-        for (int i = 0; i < values.length(); i++) {
-            JSONObject record = values.getJSONObject(i);
+    void put(JSONObject record) throws Exception {
+        synchronized (LOCK) {
+            load();
             if (!Crypto.validId(record.getString("device"))
                     || !Crypto.validId(record.getString("controller")))
                 throw new Exception("BAD_ID");
             Crypto.decode(record.getString("secret"), 32);
+            JSONObject next = new JSONObject(data.toString());
+            next.getJSONObject("devices")
+                    .put(record.getString("device"), new JSONObject(record.toString()));
+            save(next);
         }
-        JSONObject next = new JSONObject(data.toString());
-        next.put("accountDevices", new JSONArray(values.toString()));
-        save(next);
     }
 
-    synchronized JSONObject accountDevice(String id) throws Exception {
-        JSONArray values = accountDevices();
-        for (int i = 0; i < values.length(); i++) {
-            JSONObject record = values.getJSONObject(i);
-            if (id.equals(record.optString("device"))) {
-                record.put("account", true);
-                return record;
-            }
+    void remove(String id) throws Exception {
+        synchronized (LOCK) {
+            load();
+            JSONObject next = new JSONObject(data.toString());
+            next.getJSONObject("devices").remove(id);
+            if (id.equals(next.optString("last"))) next.remove("last");
+            save(next);
         }
-        return null;
+    }
+
+    String last() throws Exception {
+        synchronized (LOCK) {
+            load();
+            return data.optString("last", "");
+        }
+    }
+
+    void last(String id) throws Exception {
+        synchronized (LOCK) {
+            load();
+            JSONObject next = new JSONObject(data.toString()).put("last", id);
+            save(next);
+        }
+    }
+
+    // החשבון נשמר בנפרד מהזיווגים המקומיים, בתוך אותה כספת מוצפנת של Android.
+    JSONObject accountSession() throws Exception {
+        synchronized (LOCK) {
+            load();
+            JSONObject session = data.optJSONObject("accountSession");
+            return session == null ? null : new JSONObject(session.toString());
+        }
+    }
+
+    void accountSession(JSONObject session) throws Exception {
+        synchronized (LOCK) {
+            load();
+            JSONObject next = new JSONObject(data.toString());
+            next.remove("accountDevices");
+            next.put("accountRevision", Crypto.id());
+            if (session == null) next.remove("accountSession");
+            else next.put("accountSession", new JSONObject(session.toString()));
+            save(next);
+        }
+    }
+
+    void accountUser(JSONObject user) throws Exception {
+        synchronized (LOCK) {
+            load();
+            JSONObject next = new JSONObject(data.toString());
+            next.getJSONObject("accountSession").put("user", new JSONObject(user.toString()));
+            if (user.optBoolean("mustChangePassword")) next.remove("accountDevices");
+            save(next);
+        }
+    }
+
+    JSONArray accountDevices() throws Exception {
+        synchronized (LOCK) {
+            load();
+            JSONArray values = data.optJSONArray("accountDevices");
+            return values == null ? new JSONArray() : new JSONArray(values.toString());
+        }
+    }
+
+    void accountDevices(JSONArray values) throws Exception {
+        synchronized (LOCK) {
+            load();
+            for (int i = 0; i < values.length(); i++) {
+                JSONObject record = values.getJSONObject(i);
+                if (!Crypto.validId(record.getString("device"))
+                        || !Crypto.validId(record.getString("controller")))
+                    throw new Exception("BAD_ID");
+                Crypto.decode(record.getString("secret"), 32);
+            }
+            JSONObject next = new JSONObject(data.toString());
+            next.put("accountDevices", new JSONArray(values.toString()));
+            save(next);
+        }
+    }
+
+    JSONObject accountDevice(String id) throws Exception {
+        synchronized (LOCK) {
+            load();
+            JSONArray values = accountDevices();
+            for (int i = 0; i < values.length(); i++) {
+                JSONObject record = values.getJSONObject(i);
+                if (id.equals(record.optString("device"))) {
+                    record.put("account", true);
+                    return record;
+                }
+            }
+            return null;
+        }
+    }
+
+    String accountRevision() throws Exception {
+        synchronized (LOCK) {
+            load();
+            return data.optString("accountRevision", "");
+        }
+    }
+
+    static final class AccountSnapshot {
+        final String revision;
+        final JSONObject session;
+
+        private AccountSnapshot(String revision, JSONObject session) {
+            this.revision = revision;
+            this.session = session;
+        }
+    }
+
+    // הטוקן וגרסת החשבון נקראים יחד, כדי שבקשה ישנה לעולם לא תישלח בשם חשבון חדש.
+    AccountSnapshot accountSnapshot() throws Exception {
+        synchronized (LOCK) {
+            load();
+            JSONObject session = data.optJSONObject("accountSession");
+            return new AccountSnapshot(
+                    data.optString("accountRevision", ""),
+                    session == null ? null : new JSONObject(session.toString()));
+        }
+    }
+
+    private void requireRevision(String expected) throws Exception {
+        if (!expected.equals(data.optString("accountRevision", "")))
+            throw new Exception("ACCOUNT_SYNC_CHANGED");
+    }
+
+    AccountSnapshot accountSession(String expectedRevision, JSONObject session) throws Exception {
+        synchronized (LOCK) {
+            load();
+            requireRevision(expectedRevision);
+            accountSession(session);
+            return accountSnapshot();
+        }
+    }
+
+    void accountUser(String expectedRevision, JSONObject user) throws Exception {
+        synchronized (LOCK) {
+            load();
+            requireRevision(expectedRevision);
+            JSONObject session = data.optJSONObject("accountSession");
+            if (session == null
+                    || !user.getString("id").equals(session.getJSONObject("user").getString("id")))
+                throw new Exception("ACCOUNT_SYNC_CHANGED");
+            accountUser(user);
+        }
+    }
+
+    void accountDevices(String expectedRevision, JSONArray values) throws Exception {
+        synchronized (LOCK) {
+            load();
+            requireRevision(expectedRevision);
+            JSONObject session = data.optJSONObject("accountSession");
+            if (session == null || session.getJSONObject("user").optBoolean("mustChangePassword"))
+                throw new Exception("ACCOUNT_SYNC_CHANGED");
+            accountDevices(values);
+        }
     }
 }

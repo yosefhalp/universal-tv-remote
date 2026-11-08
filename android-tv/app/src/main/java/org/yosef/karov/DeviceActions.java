@@ -29,6 +29,7 @@ public final class DeviceActions {
         LocalAdb adb = LocalAdb.get(context);
         boolean accessibility = TvAccessibilityService.instance != null;
         boolean gestures = accessibility && PointerCapabilities.gesturesSupported(context);
+        String appStorage = StoragePolicy.location(context);
         String captureMode =
                 ScreenService.available()
                         ? "projection"
@@ -39,6 +40,8 @@ public final class DeviceActions {
                 .put("name", Vault.open(context).get("name"))
                 .put("model", Build.MODEL)
                 .put("sdk", Build.VERSION.SDK_INT)
+                .put("appStorage", appStorage)
+                .put("localAdbSetupAllowed", StoragePolicy.localAdbSetupAllowed(appStorage))
                 .put("localAdb", adb.ready())
                 .put("pointer", TvAccessibilityService.instance != null || adb.ready())
                 .put("pointerDrag", gestures || adb.ready())
@@ -134,6 +137,12 @@ public final class DeviceActions {
                         else callback.done(null, "NO_TEXT_FIELD");
                     }
                     case "adbEnable" -> {
+                        // בודקים לפני שינוי ההעדפה: הכנת ניפוי USB עלולה לנתק כונן שממנו קרוב
+                        // פועלת.
+                        if (!StoragePolicy.localAdbSetupAllowed(StoragePolicy.location(context))) {
+                            callback.done(null, StoragePolicy.SETUP_ERROR);
+                            return;
+                        }
                         remote.enable(true);
                         callback.done(true, null);
                     }

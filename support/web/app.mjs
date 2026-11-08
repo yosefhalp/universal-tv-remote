@@ -4,7 +4,7 @@ import { savedDevices, saveDevice, forgetDevice } from './store.mjs';
 import { normalizeCode } from './srp.mjs';
 import { PointerSurface } from './pointer.mjs';
 import { AccountClient } from './account.mjs';
-import { accountUI, accountMessage } from './account-ui.mjs';
+import { accountUI, accountMessage, linkAccountTelevision } from './account-ui.mjs';
 
 const $ = (id) => document.getElementById(id);
 let accountConnectionToken;
@@ -23,6 +23,9 @@ const account = new AccountClient({
 });
 let accounts;
 let accountSyncSupported = false;
+let localAdbSetupAllowed = true;
+const normalAdbSetupHint = $('adb-setup-hint').textContent.trim();
+const externalStorageHelp = 'קרוב מותקנת באחסון חיצוני. לפני הגדרת שליטה נוספת מעבירים אותה לזיכרון הפנימי בטלוויזיה: הגדרות ← אפליקציות ← קרוב ← האחסון בשימוש (Storage used) ← זיכרון פנימי. אין להפעיל ניפוי שגיאות USB לפני ההעברה. אחר כך פותחים את קרוב ומתחברים מחדש.';
 let pointerSupported = false;
 let pointerDragSupported = true;
 const pointer = new PointerSurface({
@@ -57,6 +60,7 @@ let connection,
 let expectedClose = false,
   pendingPair;
 const messages = {
+  APP_STORAGE_EXTERNAL: externalStorageHelp,
   ACCOUNT_DENIED: 'הגישה לחשבון הסתיימה או בוטלה. פתחו את החשבון ובדקו את הכניסה.',
   ACCOUNT_UPDATE_REQUIRED: 'יש לעדכן את קרוב בטלוויזיה לגרסה שתומכת בחשבונות ואז לנסות שוב.',
   ACCOUNT_LINK_PENDING: 'הסנכרון עדיין לא אושר. לחצו על סנכרון חשבון כדי לבדוק שוב.',
@@ -134,12 +138,21 @@ async function confirmAction(title, text) {
 function relayUrl() {
   return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
 }
+function updateAdbSetup(info) {
+  // התקנה על כונן USB דורשת העברה לאחסון פנימי לפני שינוי הגדרות; השליטה הקיימת ממשיכה.
+  localAdbSetupAllowed = info.appStorage !== 'external' && info.localAdbSetupAllowed !== false;
+  $('adb-setup-hint').textContent = localAdbSetupAllowed ? normalAdbSetupHint : externalStorageHelp;
+  $('adb-enable').disabled = !connection?.ready || !localAdbSetupAllowed;
+}
+let homeRenderGeneration = 0;
 async function showHome() {
+  const renderGeneration = ++homeRenderGeneration;
   $('home').hidden = false;
   $('session').hidden = true;
-  $('devices').replaceChildren();
   const devices = [...(await savedDevices()), ...account.devices];
-  $('empty').hidden = devices.length > 0;
+  // רענונים מקבילים אינם מצטברים: משאירים את הרשימה הקיימת עד שהתוצאה העדכנית מוכנה.
+  if (renderGeneration !== homeRenderGeneration || $('home').hidden) return;
+  const rows = document.createDocumentFragment();
   for (const device of devices) {
     const row = document.createElement('div');
     row.className = 'device';
@@ -180,8 +193,10 @@ async function showHome() {
       }
     };
     row.append(info, button, remove);
-    $('devices').append(row);
+    rows.append(row);
   }
+  $('devices').replaceChildren(rows);
+  $('empty').hidden = devices.length > 0;
 }
 async function stop(show = true) {
   expectedClose = true;
@@ -277,12 +292,15 @@ async function connectDevice(device, retry = false) {
     $('notice').hidden = true;
     status('מחוברים לטלוויזיה', true);
     setControls(true);
+    updateAdbSetup(info);
     // ניתוק זמני אינו מבטל השהיה שהמשתמש בחר לפניו.
     $('pause-screen').textContent = paused ? 'חידוש תמונה' : 'השהיית תמונה';
     $('pause-screen').setAttribute('aria-pressed', String(paused));
     $('capability-note').textContent =
       info.sdk < 33 && !info.localAdb
-        ? 'בגרסה זו מומלץ להגדיר שליטה נוספת דרך ניפוי שגיאות מקומי כדי לאפשר חצים בכל האפליקציות.'
+        ? localAdbSetupAllowed
+          ? 'בגרסה זו מומלץ להגדיר שליטה נוספת דרך ניפוי שגיאות מקומי כדי לאפשר חצים בכל האפליקציות.'
+          : externalStorageHelp
         : 'אפשר להשתמש גם בחיצי המקלדת, Enter ו־Escape. התמונה מיועדת לעזרה ולניווט.';
     $('capture-permission').hidden = info.captureMode !== 'permission';
     pointerSupported = info.pointer === true;
@@ -321,6 +339,7 @@ function setControls(enabled) {
     '[data-key], #text-form button, #apps button, #adb-enable, #adb-disable, #adb-status, #capture-permission, #refresh-controllers, #forget, #account-link',
   ))
     button.disabled = !enabled;
+  if (!localAdbSetupAllowed) $('adb-enable').disabled = true;
 }
 async function action(method, args) {
   try {
@@ -545,6 +564,7 @@ $('pause-screen').onclick = () => {
 };
 $('capture-permission').onclick = () => action('requestCapture');
 $('adb-enable').onclick = async () => {
+  if (!localAdbSetupAllowed) { notice(externalStorageHelp); return; }
   if (await action('adbEnable'))
     notice('התחיל ניסיון חיבור בלבד. יש להפעיל מראש ניפוי שגיאות ברשת בהגדרות הסטרימר. אם תופיע בקשת אישור בטלוויזיה, אשרו אותה. בדקו את מצב השליטה הנוספת ואז התחברו מחדש לטלוויזיה בקרוב לעדכון יכולות השליטה.');
 };
@@ -554,6 +574,7 @@ $('adb-disable').onclick = async () => {
 $('adb-status').onclick = async () => {
   const info = await action('info');
   if (info) {
+    updateAdbSetup(info);
     $('android-remote-status').textContent = info.remoteStatus;
     notice('אם מצב השליטה הנוספת השתנה, התחברו מחדש לטלוויזיה בקרוב כדי לעדכן את יכולות השליטה.');
   }
@@ -713,54 +734,18 @@ accounts = accountUI(account, {
   onSync: async () => {
     if (!$('home').hidden) await showHome();
   },
-  onLink: async () => {
-    if (!connection?.ready || !selected || selected.account) {
-      notice(
-        selected?.account
-          ? 'הטלוויזיה כבר מסונכרנת לחשבון.'
-          : 'מתחברים קודם לטלוויזיה המקומית שרוצים לסנכרן.',
-      );
-      return;
-    }
-    if (!accountSyncSupported) {
-      notice(messages.ACCOUNT_UPDATE_REQUIRED);
-      return;
-    }
-    if (!account.token || account.user.mustChangePassword) {
-      await accounts.open();
-      return;
-    }
-    const active = connection,
-      device = selected;
-    $('account-link').disabled = true;
-    try {
-      const prepared = await account.prepare(device.device, device.name);
-      if (!prepared.linked) {
-        try {
-          await active.call(
-            'grantAccount',
-            {
-              ticket: prepared.ticket,
-              controller: prepared.controller,
-              secret: prepared.secret,
-              name: device.name,
-            },
-            14000,
-          );
-        } catch (error) {
-          if (!['REQUEST_TIMEOUT', 'DISCONNECTED'].includes(error.message)) throw error;
-        }
-      }
-      await account.sync();
-      if (!account.devices.some((item) => item.device === device.device))
-        throw new Error('ACCOUNT_LINK_PENDING');
-      notice('הטלוויזיה סונכרנה לחשבון וזמינה גם בטלפון ובטאבלט נוספים.');
-    } catch (error) {
-      notice(messages[error.message] || accountMessage(error));
-    } finally {
-      $('account-link').disabled = !connection?.ready;
-    }
+  localDevices: async () => {
+    const devices = await savedDevices();
+    // מציגים תחילה את הטלוויזיה הפעילה, בלי לשנות או לייצא את מפתח הזיווג המקומי.
+    return devices.sort((a, b) => Number(b.device === selected?.device) - Number(a.device === selected?.device));
   },
+  onLink: (device, onProgress) => linkAccountTelevision({
+    client: account,
+    device,
+    onProgress,
+    connect: connectDevice,
+    getActive: () => ({ connection, device: selected, supported: accountSyncSupported, generation }),
+  }),
 });
 try {
   if (!isSecureContext || !crypto.subtle)

@@ -43,8 +43,8 @@ public final class MainActivity extends ComponentActivity {
     private AccountClient accounts;
     private volatile boolean accountBusy;
     private boolean accountSyncSupported;
-    private JSONObject selected;
-    private RemoteClient connection;
+    private volatile JSONObject selected;
+    private volatile RemoteClient connection;
     private volatile RemoteClient pairingConnection;
     private LinearLayout content;
     private TextView status, screenMessage;
@@ -57,7 +57,10 @@ public final class MainActivity extends ComponentActivity {
     private Dialog fullDialog;
     private Bitmap frame;
     private volatile boolean resumed, destroyed;
-    private boolean connected, paused, pairBusy;
+    private volatile boolean connected;
+    private boolean paused, pairBusy;
+    private volatile long connectionGeneration, syncGeneration;
+    private AccountSyncIntent pendingAccountSync;
     private int reconnects;
     private volatile int pairEpoch;
     private long lastFrame;
@@ -133,6 +136,8 @@ public final class MainActivity extends ComponentActivity {
     protected void onPause() {
         resumed = false;
         pairEpoch++;
+        syncGeneration++;
+        pendingAccountSync = null;
         pairBusy = false;
         if (lookup != null) lookup.cancel();
         if (pairingConnection != null) pairingConnection.close();
@@ -639,7 +644,7 @@ public final class MainActivity extends ComponentActivity {
         toast(
                 !pointerDragSupported
                         ? "נגיעה ללחיצה ושתי אצבעות לגלילה; גרירה ושליטה חופשית דורשות הפעלת שליטה"
-                              + " נוספת בסטרימר"
+                                + " נוספת בסטרימר"
                         : relative
                                 ? "משטח מגע: הזזה באצבע, נגיעה ללחיצה ושתי אצבעות לגלילה"
                                 : "מגע ישיר: לחיצה וגרירה על התמונה; שתי אצבעות לגלילה");
@@ -700,6 +705,8 @@ public final class MainActivity extends ComponentActivity {
 
     private void select(String id) {
         if (pairBusy) return;
+        syncGeneration++;
+        pendingAccountSync = null;
         try {
             selected = vault.get(id);
             if (selected == null) selected = vault.accountDevice(id);
@@ -715,6 +722,8 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void home() {
+        syncGeneration++;
+        pendingAccountSync = null;
         stopConnection();
         selected = null;
         paused = false;
@@ -729,6 +738,7 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void stopConnection() {
+        connectionGeneration++;
         RemoteClient previous = connection;
         connection = null;
         connected = false;
@@ -807,6 +817,7 @@ public final class MainActivity extends ComponentActivity {
                                                     apps = (JSONArray) value;
                                             }));
                             heartbeat(active);
+                            completePendingAccountSync(target, active);
                         }));
     }
 
@@ -1006,6 +1017,13 @@ public final class MainActivity extends ComponentActivity {
 
     private void pair(Pairing supplied, String code) {
         if (pairBusy || accountBusy) return;
+        final PhoneVault.AccountSnapshot pairingAccount;
+        try {
+            pairingAccount = vault.accountSnapshot();
+        } catch (Exception error) {
+            toast(explain(error));
+            return;
+        }
         pairBusy = true;
         int attempt = ++pairEpoch;
         render();
@@ -1072,11 +1090,11 @@ public final class MainActivity extends ComponentActivity {
                     return;
                 }
                 JSONObject prepared = null;
-                accountPair = accountToken() != null;
+                accountPair = pairingAccount.session != null;
                 if (accountPair) {
-                    prepared = accounts.prepare(pairing.device, pairing.name);
+                    prepared = accounts.prepare(pairing.device, pairing.name, pairingAccount);
                     if (prepared.optBoolean("linked")) {
-                        accounts.refresh();
+                        accounts.refresh(pairingAccount);
                         String device = pairing.device;
                         main.post(() -> {
                             if (!destroyed && resumed && pairEpoch == attempt) {
@@ -1111,7 +1129,10 @@ public final class MainActivity extends ComponentActivity {
                                 .put("controller", id)
                                 .put("secret", secret)
                                 .put("name", accountPair ? "חשבון קרוב" : "אפליקציית קרוב בטלפון");
-                if (accountPair) enrollment.put("accountTicket", prepared.getString("ticket"));
+                if (accountPair) {
+                    accounts.requireSnapshot(pairingAccount);
+                    enrollment.put("accountTicket", prepared.getString("ticket"));
+                }
                 enrollmentSent = true;
                 Exception enrollmentFailure = null;
                 try {
@@ -1120,7 +1141,7 @@ public final class MainActivity extends ComponentActivity {
                     enrollmentFailure = error;
                 }
                 if (accountPair) {
-                    accounts.refresh();
+                    accounts.refresh(pairingAccount);
                     if (vault.accountDevice(pairing.device) == null)
                         throw enrollmentFailure == null
                                 ? new Exception("ACCOUNT_LINK_FAILED")
@@ -1301,7 +1322,11 @@ public final class MainActivity extends ComponentActivity {
 
     // כל עבודת הרשת בתור הרקע; כישלון רשת משאיר את המטמון המוצפן זמין.
     private void accountWork(AccountWork work, Runnable success) {
-        if (accountBusy || pairBusy || destroyed) return;
+        if (destroyed) return;
+        if (accountBusy || pairBusy) {
+            toast("יש פעולה קודמת בתהליך. המתינו לסיומה ונסו שוב.");
+            return;
+        }
         accountBusy = true;
         tasks.execute(() -> {
             Exception failure = null;
@@ -1339,7 +1364,11 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void refreshAccount(boolean show) {
-        if (accounts == null || accountToken() == null || accountBusy) return;
+        if (accounts == null || accountToken() == null) return;
+        if (accountBusy || pairBusy) {
+            if (show) toast("הרשימה מתעדכנת כעת. המתינו רגע ונסו שוב.");
+            return;
+        }
         accountWork(
                 () -> accounts.refresh(),
                 () -> {
@@ -1416,7 +1445,11 @@ public final class MainActivity extends ComponentActivity {
             boolean admin = user.optString("role").equals("admin");
             ArrayList<String> items =
                     new ArrayList<>(
-                            Arrays.asList("סנכרון טלוויזיות", "הטלוויזיות בחשבון", "החלפת סיסמה"));
+                            Arrays.asList(
+                                    "סנכרון טלוויזיה מהטלפון לחשבון",
+                                    "רענון הרשימה מהחשבון",
+                                    "הטלוויזיות בחשבון",
+                                    "החלפת סיסמה"));
             if (admin) items.add("ניהול משתמשים");
             items.add("יציאה מהחשבון");
             new AlertDialog.Builder(this)
@@ -1425,7 +1458,10 @@ public final class MainActivity extends ComponentActivity {
                             items.toArray(new String[0]),
                             (d, which) -> {
                                 String action = items.get(which);
-                                if (action.equals("סנכרון טלוויזיות")) refreshAccount(true);
+                                if (action.equals("סנכרון טלוויזיה מהטלפון לחשבון"))
+                                    syncLocalTelevisions();
+                                else if (action.equals("רענון הרשימה מהחשבון"))
+                                    refreshAccount(true);
                                 else if (action.equals("הטלוויזיות בחשבון")) accountTelevisions();
                                 else if (action.equals("החלפת סיסמה")) passwordDialog(false);
                                 else if (action.equals("ניהול משתמשים")) adminUsers();
@@ -1718,77 +1754,232 @@ public final class MainActivity extends ComponentActivity {
         dialog.show();
     }
 
-    private void syncTelevision() {
-        if (selected == null || !connected || connection == null) {
-            toast("מתחברים קודם לטלוויזיה");
+    // הכוונה נוצרת רק אחרי אישור מפורש וקשורה לחשבון ולבחירת הטלוויזיה הנוכחיים.
+    private static final class AccountSyncIntent {
+        final String device, token, owner;
+        final long generation;
+        final PhoneVault.AccountSnapshot snapshot;
+
+        AccountSyncIntent(String device, PhoneVault.AccountSnapshot snapshot, long generation)
+                throws Exception {
+            this.device = device;
+            this.snapshot = snapshot;
+            this.token = snapshot.session.getString("token");
+            this.owner = snapshot.session.getJSONObject("user").getString("id");
+            this.generation = generation;
+        }
+    }
+
+    private void syncLocalTelevisions() {
+        if (accountBusy || pairBusy) {
+            toast("ממתינים לסיום הפעולה הקודמת. נסו שוב בעוד רגע.");
             return;
         }
-        if (accountToken() == null) {
-            accountDialog();
+        try {
+            if (vault.accountSession() == null) {
+                accountDialog();
+                return;
+            }
+            JSONArray devices = vault.devices();
+            if (devices.length() == 0) {
+                new AlertDialog.Builder(this)
+                        .setTitle("אין טלוויזיות מקומיות לסנכרון")
+                        .setMessage(
+                                "מוסיפים קודם טלוויזיה באמצעות קוד או QR. טלוויזיה חדשה שמוסיפים"
+                                        + " בזמן כניסה לחשבון נשמרת בו לאחר אישור הטלוויזיה.")
+                        .setPositiveButton("הבנתי", null)
+                        .show();
+                return;
+            }
+            String[] names = new String[devices.length()];
+            for (int i = 0; i < names.length; i++)
+                names[i] = devices.getJSONObject(i).getString("name");
+            new AlertDialog.Builder(this)
+                    .setTitle("איזו טלוויזיה לסנכרן לחשבון?")
+                    .setItems(
+                            names,
+                            (d, index) -> {
+                                try {
+                                    confirmAccountSync(
+                                            devices.getJSONObject(index).getString("device"));
+                                } catch (Exception error) {
+                                    toast(explain(error));
+                                }
+                            })
+                    .setNegativeButton("ביטול", null)
+                    .show();
+        } catch (Exception error) {
+            toast(explain(error));
+        }
+    }
+
+    private void syncTelevision() {
+        if (selected == null) {
+            syncLocalTelevisions();
             return;
         }
         if (selected.optBoolean("account")) {
             refreshAccount(true);
             return;
         }
+        confirmAccountSync(selected.optString("device"));
+    }
+
+    private void confirmAccountSync(String device) {
+        if (accountBusy || pairBusy) {
+            toast("ממתינים לסיום הפעולה הקודמת. נסו שוב בעוד רגע.");
+            return;
+        }
+        try {
+            PhoneVault.AccountSnapshot snapshot = vault.accountSnapshot();
+            JSONObject session = snapshot.session, local = vault.get(device);
+            if (session == null) {
+                accountDialog();
+                return;
+            }
+            JSONObject user = session.getJSONObject("user");
+            if (user.optBoolean("mustChangePassword")) {
+                passwordDialog(true);
+                return;
+            }
+            if (local == null) {
+                toast("הזיווג המקומי אינו זמין. בחרו טלוויזיה שמורה אחרת.");
+                return;
+            }
+            String token = session.getString("token"), owner = user.getString("id");
+            new AlertDialog.Builder(this)
+                    .setTitle("סנכרון " + local.getString("name") + " לחשבון")
+                    .setMessage(
+                            "האפליקציה תתחבר לטלוויזיה בעזרת הזיווג השמור. לאחר אישור הסנכרון היא"
+                                    + " תהיה זמינה בכל הטלפונים והטאבלטים המחוברים לחשבון שלך.")
+                    .setPositiveButton(
+                            "התחברות וסנכרון",
+                            (d, w) -> {
+                                if (accountBusy || pairBusy) {
+                                    toast("יש פעולה קודמת בתהליך. המתינו ונסו שוב.");
+                                    return;
+                                }
+                                try {
+                                    accounts.requireSnapshot(snapshot);
+                                    accounts.requireSession(token, owner);
+                                    if (connected
+                                            && connection != null
+                                            && selected != null
+                                            && !selected.optBoolean("account")
+                                            && device.equals(selected.optString("device"))) {
+                                        AccountSyncIntent intent =
+                                                new AccountSyncIntent(
+                                                        device, snapshot, ++syncGeneration);
+                                        runAccountSync(intent, selected, connection);
+                                    } else {
+                                        select(device);
+                                        if (selected == null
+                                                || !device.equals(selected.optString("device")))
+                                            return;
+                                        pendingAccountSync =
+                                                new AccountSyncIntent(
+                                                        device, snapshot, syncGeneration);
+                                        toast("מתחברים לטלוויזיה כדי לסנכרן אותה לחשבון…");
+                                    }
+                                } catch (Exception error) {
+                                    toast(explain(error));
+                                }
+                            })
+                    .setNegativeButton("ביטול", null)
+                    .show();
+        } catch (Exception error) {
+            toast(explain(error));
+        }
+    }
+
+    private void completePendingAccountSync(JSONObject target, RemoteClient active) {
+        AccountSyncIntent intent = pendingAccountSync;
+        if (intent == null || !intent.device.equals(target.optString("device"))) return;
+        pendingAccountSync = null;
+        if (intent.generation != syncGeneration) return;
+        runAccountSync(intent, target, active);
+    }
+
+    private boolean accountSyncCurrent(AccountSyncIntent intent) {
+        return !destroyed
+                && resumed
+                && intent.generation == syncGeneration
+                && selected != null
+                && intent.device.equals(selected.optString("device"));
+    }
+
+    private void runAccountSync(AccountSyncIntent intent, JSONObject target, RemoteClient active) {
         if (!accountSyncSupported) {
             toast("יש לעדכן את קרוב בסטרימר כדי לסנכרן לחשבון. הזיווג המקומי נשמר.");
             return;
         }
-        JSONObject target = selected;
-        RemoteClient active = connection;
-        new AlertDialog.Builder(this)
-                .setTitle("סנכרון הטלוויזיה לחשבון")
-                .setMessage("הטלוויזיה תהיה זמינה בכל טלפון וטאבלט המחוברים לחשבון שלך.")
-                .setPositiveButton(
-                        "סנכרון",
-                        (d, w) ->
-                                accountWork(
-                                        () -> {
-                                            JSONObject prepared =
-                                                    accounts.prepare(
-                                                            target.getString("device"),
-                                                            target.getString("name"));
-                                            if (!prepared.optBoolean("linked")) {
-                                                Exception grantFailure = null;
-                                                try {
-                                                    active.call(
-                                                                    "grantAccount",
-                                                                    new JSONObject()
-                                                                            .put(
-                                                                                    "ticket",
-                                                                                    prepared
-                                                                                            .getString(
-                                                                                                    "ticket"))
-                                                                            .put(
-                                                                                    "controller",
-                                                                                    prepared
-                                                                                            .getString(
-                                                                                                    "controller"))
-                                                                            .put(
-                                                                                    "secret",
-                                                                                    prepared
-                                                                                            .getString(
-                                                                                                    "secret"))
-                                                                            .put(
-                                                                                    "name",
-                                                                                    "חשבון קרוב"),
-                                                                    12000)
-                                                            .get(14, TimeUnit.SECONDS);
-                                                } catch (Exception error) {
-                                                    grantFailure = error;
-                                                }
-                                                accounts.refresh();
-                                                if (vault.accountDevice(target.getString("device"))
-                                                        == null)
-                                                    throw grantFailure == null
-                                                            ? new Exception("ACCOUNT_LINK_FAILED")
-                                                            : grantFailure;
-                                            } else accounts.refresh();
-                                        },
-                                        () -> toast("הטלוויזיה מסונכרנת לחשבון")))
-                .setNegativeButton("ביטול", null)
-                .show();
+        final long expectedConnection = connectionGeneration;
+        accountWork(
+                () -> {
+                    accounts.requireSnapshot(intent.snapshot);
+                    accounts.requireSession(intent.token, intent.owner);
+                    if (!accountSyncCurrent(intent)
+                            || connection != active
+                            || !connected
+                            || connectionGeneration != expectedConnection)
+                        throw new Exception("CANCELLED");
+                    JSONObject prepared =
+                            accounts.prepare(
+                                    intent.device, target.getString("name"), intent.snapshot);
+                    // לא שולחים הרשאה אם המשתמש החליף חשבון, טלוויזיה או חיבור במהלך ההכנה.
+                    accounts.requireSnapshot(intent.snapshot);
+                    accounts.requireSession(intent.token, intent.owner);
+                    if (!accountSyncCurrent(intent)
+                            || connection != active
+                            || !connected
+                            || connectionGeneration != expectedConnection)
+                        throw new Exception("CANCELLED");
+                    if (!prepared.optBoolean("linked")) {
+                        try {
+                            active.call(
+                                            "grantAccount",
+                                            new JSONObject()
+                                                    .put("ticket", prepared.getString("ticket"))
+                                                    .put(
+                                                            "controller",
+                                                            prepared.getString("controller"))
+                                                    .put("secret", prepared.getString("secret"))
+                                                    .put("name", "חשבון קרוב"),
+                                            12000)
+                                    .get(14, TimeUnit.SECONDS);
+                        } catch (Exception error) {
+                            // אישור הטלוויזיה עשוי להגיע דרך התור בשרת גם אחרי שתשובת הקריאה אבדה.
+                            if (!Arrays.asList(
+                                            "NETWORK", "DISCONNECTED", "REQUEST_TIMEOUT", "TIMEOUT")
+                                    .contains(reason(error))) throw error;
+                        }
+                    }
+                    accounts.awaitDevice(
+                            intent.device, intent.snapshot, () -> accountSyncCurrent(intent));
+                    accounts.requireSnapshot(intent.snapshot);
+                    accounts.requireSession(intent.token, intent.owner);
+                    if (!accountSyncCurrent(intent)
+                            || connection != active
+                            || connectionGeneration != expectedConnection)
+                        throw new Exception("CANCELLED");
+                },
+                () -> {
+                    try {
+                        accounts.requireSnapshot(intent.snapshot);
+                        accounts.requireSession(intent.token, intent.owner);
+                        if (!accountSyncCurrent(intent)
+                                || connection != active
+                                || connectionGeneration != expectedConnection) return;
+                        if (vault.accountDevice(intent.device) == null) {
+                            toast("הסנכרון עדיין לא אושר. רעננו את הרשימה בעוד רגע.");
+                            return;
+                        }
+                        toast("הטלוויזיה נוספה לחשבון");
+                        accountTelevisions();
+                    } catch (Exception error) {
+                        toast(explain(error));
+                    }
+                });
     }
 
     private void options() {
@@ -1832,25 +2023,7 @@ public final class MainActivity extends ComponentActivity {
                                 case 0 -> home();
                                 case 1 -> controllers();
                                 case 2 -> action("requestCapture", new JSONObject());
-                                case 3 ->
-                                        new AlertDialog.Builder(this)
-                                                .setTitle("שליטה נוספת")
-                                                .setMessage(
-                                                        "יש להפעיל מראש ניפוי שגיאות ברשת בהגדרות"
-                                                            + " הסטרימר. הכפתור מנסה להתחבר בלבד"
-                                                            + " ואינו מפעיל את ההגדרה. אם תופיע"
-                                                            + " בקשת אישור בטלוויזיה, יש לאשר אותה."
-                                                            + " לאחר החיבור, התחברו מחדש לטלוויזיה"
-                                                            + " בקרוב כדי לעדכן את יכולות השליטה."
-                                                            + " לנסות להתחבר?")
-                                                .setPositiveButton(
-                                                        "ניסיון חיבור",
-                                                        (a, b) ->
-                                                                action(
-                                                                        "adbEnable",
-                                                                        new JSONObject()))
-                                                .setNegativeButton("ביטול", null)
-                                                .show();
+                                case 3 -> additionalControl();
                                 case 4 -> action("adbDisable", new JSONObject());
                                 case 5 -> guide();
                                 case 6 -> phoneUpdates();
@@ -1870,6 +2043,54 @@ public final class MainActivity extends ComponentActivity {
 
     private void phoneUpdates() {
         startActivity(new Intent(this, org.yosef.karov.updates.UpdateActivity.class));
+    }
+
+    private void additionalControl() {
+        RemoteClient active = connection;
+        if (active == null || !connected) return;
+        toast("בודקים את הסטרימר…");
+        // בודקים את מקום ההתקנה לפני ההוראות, כי במכשירים מסוימים ניפוי שגיאות מנתק כונן USB.
+        active.call("info", new JSONObject(), 10000)
+                .whenComplete((value, error) ->
+                        main.post(() -> {
+                            if (!resumed || connection != active || !connected) return;
+                            if (error != null || !(value instanceof JSONObject info)) {
+                                toast(explain(error));
+                                return;
+                            }
+                            if ("external".equals(info.optString("appStorage"))
+                                    || !info.optBoolean("localAdbSetupAllowed", true)) {
+                                new AlertDialog.Builder(this)
+                                        .setTitle("קודם מעבירים לאחסון הפנימי")
+                                        .setMessage(
+                                                "קרוב מותקנת על כונן חיצוני. ניפוי שגיאות עלול לנתק"
+                                                    + " אותו ואת העזרה מרחוק. בטלוויזיה פותחים"
+                                                    + " הגדרות ← אפליקציות ← קרוב ← שטח אחסון"
+                                                    + " בשימוש ← אחסון פנימי משותף. מעבירים את"
+                                                    + " האפליקציה בלבד, בלי למחוק נתונים או להסיר"
+                                                    + " אותה. לאחר ההעברה פותחים שוב את קרוב.")
+                                        .setPositiveButton(
+                                                "הגדרות הטלוויזיה", (a, b) -> key("SETTINGS"))
+                                        .setNegativeButton("סגירה", null)
+                                        .show();
+                                return;
+                            }
+                            new AlertDialog.Builder(this)
+                                    .setTitle("שליטה נוספת")
+                                    .setMessage(
+                                            "אם קרוב מותקנת על כונן USB, יש להעביר אותה לאחסון"
+                                                + " הפנימי לפני ההמשך. יש להפעיל מראש ניפוי שגיאות"
+                                                + " ברשת בהגדרות הסטרימר. הכפתור מנסה להתחבר בלבד"
+                                                + " ואינו מפעיל את ההגדרה. אם תופיע בקשת אישור"
+                                                + " בטלוויזיה, יש לאשר אותה. לאחר החיבור, התחברו"
+                                                + " מחדש לטלוויזיה בקרוב כדי לעדכן את יכולות"
+                                                + " השליטה. לנסות להתחבר?")
+                                    .setPositiveButton(
+                                            "ניסיון חיבור",
+                                            (a, b) -> action("adbEnable", new JSONObject()))
+                                    .setNegativeButton("ביטול", null)
+                                    .show();
+                        }));
     }
 
     private void tvUpdates() {
@@ -2097,6 +2318,9 @@ public final class MainActivity extends ComponentActivity {
             case "ACCOUNT_UNAUTHORIZED", "ACCOUNT_DENIED", "UNAUTHORIZED", "INVALID_CREDENTIALS" ->
                     "הכניסה לחשבון אינה תקפה. יש להיכנס מחדש.";
             case "ACCOUNT_UPDATE_REQUIRED" -> "יש לעדכן את קרוב בסטרימר לפני חיבור לחשבון.";
+            case "ACCOUNT_LINK_PENDING" ->
+                    "הסנכרון עדיין לא אושר בשרת. רעננו את הרשימה בעוד רגע או נסו לסנכרן שוב.";
+            case "ACCOUNT_SYNC_CHANGED" -> "החשבון השתנה. בחרו שוב טלוויזיה לסנכרון.";
             case "ACCOUNT_LINK_FAILED" -> "הטלוויזיה טרם נוספה לחשבון. נסו לסנכרן שוב.";
             case "MUST_CHANGE_PASSWORD", "PASSWORD_CHANGE_REQUIRED" ->
                     "יש להחליף את הסיסמה לפני שימוש בחשבון.";
@@ -2115,6 +2339,9 @@ public final class MainActivity extends ComponentActivity {
             case "POINTER_CANCELLED" ->
                     "הפעולה לא הושלמה. אפשר להשתמש בחצים או לבדוק את השליטה הנוספת בסטרימר.";
             case "POINTER_REQUIRES_ADB" -> "גרירה ושליטה חופשית דורשות הפעלת שליטה נוספת בסטרימר.";
+            case "APP_STORAGE_EXTERNAL" ->
+                    "יש להעביר את קרוב מהכונן החיצוני לאחסון הפנימי בסטרימר לפני הפעלת שליטה נוספת."
+                        + " אין למחוק נתונים.";
             case "POINTER_TARGET_UNAVAILABLE" ->
                     "אין כאן רכיב שניתן ללחוץ עליו. אפשר להשתמש בחצים או להפעיל שליטה נוספת.";
             case "STALE_GEOMETRY" -> "המסך שינה כיוון או גודל. המתינו לתמונה החדשה.";

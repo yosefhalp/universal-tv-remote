@@ -171,6 +171,7 @@ public final class MainActivity extends Activity {
                                 new Intent(this, org.yosef.karov.updates.UpdateActivity.class)));
         text("עזרה משפחתית בטלוויזיה", 21);
         state = text(SupportService.status, 14);
+        storageWarning();
         text(
                 "בהכנה הראשונה מזווגים את הטלפון או המחשב של בן המשפחה. לאחר מכן הוא יכול לעזור"
                         + " מרחוק. אפשר להשהות את העזרה ולבטל גישה בכל רגע.",
@@ -236,6 +237,10 @@ public final class MainActivity extends Activity {
         button(
                 "חיבור שליטה נוספת (ADB מקומי)",
                 () -> {
+                    if (!StoragePolicy.localAdbSetupAllowed(StoragePolicy.location(this))) {
+                        storageHelp();
+                        return;
+                    }
                     try {
                         LocalAdb.get(this).enable(true);
                         toast("הפעילו ניפוי שגיאות ברשת ואשרו את קרוב בטלוויזיה");
@@ -275,6 +280,7 @@ public final class MainActivity extends Activity {
         text("קרוב  /  מרכז העזרה המשפחתי", 15).setTextColor(0xffff784e);
         text(vault.enabled() ? "עזרה מרחוק מופעלת." : "העזרה מושהית.", 36);
         state = text(SupportService.status, 15);
+        storageWarning();
         button(
                 "עדכוני קרוב",
                 () ->
@@ -316,6 +322,42 @@ public final class MainActivity extends Activity {
                     render();
                 });
         button("מכשירים מורשים וביטול גישה", this::controllers);
+    }
+
+    private void storageWarning() {
+        if (!StoragePolicy.EXTERNAL.equals(StoragePolicy.location(this))) return;
+        text(
+                "קרוב מותקנת בכונן חיצוני. ניתוק הכונן או שינוי מצב USB עלולים להפסיק את העזרה,"
+                        + " וגם החיבור לאחר הפעלת הטלוויזיה עלול להתעכב. לפני הכנת שליטה נוספת יש"
+                        + " להעביר את קרוב לאחסון הפנימי של הטלוויזיה.",
+                15);
+        button("העברת קרוב לאחסון פנימי — הנחיות", this::storageHelp);
+    }
+
+    private void storageHelp() {
+        new AlertDialog.Builder(this)
+                .setTitle("מעבירים את קרוב לאחסון הטלוויזיה")
+                .setMessage(
+                        "במסך Android בחרו אחסון בשימוש ← אחסון פנימי משותף ← העברה. אם הקיצור"
+                                + " אינו זמין: הגדרות הטלוויזיה ← אפליקציות ← קרוב ← אחסון בשימוש."
+                                + "\n\nמשתמשים בפעולת העברה בלבד, ללא הסרת האפליקציה, ניקוי נתונים,"
+                                + " שכחת הכונן או פירמוט. השאירו את הכונן מחובר בזמן ההעברה. לאחר"
+                                + " סיומה פתחו שוב את קרוב ובדקו שהטלוויזיה מתחברת.")
+                .setPositiveButton("פתיחת פרטי קרוב ב-Android", (dialog, which) -> openAppStorage())
+                .setNegativeButton("חזרה", null)
+                .show();
+    }
+
+    private void openAppStorage() {
+        try {
+            // מסך המערכת מבצע את ההעברה ושומר את נתוני האפליקציה; קרוב אינה מעבירה קבצים בעצמה.
+            startActivity(
+                    new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                            .setData(android.net.Uri.parse("package:" + getPackageName())));
+        } catch (ActivityNotFoundException | SecurityException unavailable) {
+            SystemSettings.open(this, false);
+            toast("בחרו אפליקציות ← קרוב ← אחסון בשימוש ← אחסון פנימי משותף");
+        }
     }
 
     private void toast(String text) {
