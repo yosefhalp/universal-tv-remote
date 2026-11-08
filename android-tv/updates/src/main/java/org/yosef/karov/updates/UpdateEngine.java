@@ -85,6 +85,10 @@ public final class UpdateEngine {
         localInstaller = installer;
     }
 
+    public boolean television() {
+        return UpdatePolicy.television(context.getPackageName());
+    }
+
     public void busy(boolean value) {
         boolean wasBusy = busy;
         busy = value;
@@ -107,6 +111,23 @@ public final class UpdateEngine {
         return confirmation;
     }
 
+    public synchronized Intent takeConfirmation() {
+        Intent pending = confirmation;
+        confirmation = null;
+        return pending;
+    }
+
+    public void installationScreenUnavailable() {
+        // כשל פתיחת המסך אינו כשל באימות הקובץ או בהורדה, ולכן שומרים את מצב העבודה הקיים.
+        if (working.get() || "installing".equals(prefs.getString("state", ""))) return;
+        prefs.edit()
+                .putString(
+                        "message",
+                        "פתחו בטלוויזיה את קרוב, עדכוני קרוב, והתקנת העדכון. Android לא אפשר לפתוח"
+                            + " את המסך מרחוק.")
+                .commit();
+    }
+
     public void cancelDownload() {
         Call call = download;
         if (call != null) call.cancel();
@@ -127,7 +148,12 @@ public final class UpdateEngine {
                     .put("latest", prefs.getString("latest", ""))
                     .put("notes", prefs.getString("notes", ""))
                     .put("checkedAt", prefs.getLong("checkedAt", 0))
-                    .put("localInstall", localInstaller != null && localInstaller.available());
+                    .put(
+                            "localInstall",
+                            UpdatePolicy.localInstall(television())
+                                    && localInstaller != null
+                                    && localInstaller.available())
+                    .put("installMode", television() ? "system-confirmation" : "automatic");
         } catch (Exception error) {
             throw new IllegalStateException(error);
         }
@@ -142,7 +168,7 @@ public final class UpdateEngine {
                             .setPersisted(true)
                             .setPeriodic(PERIOD)
                             .setRequiredNetworkType(
-                                    context.getPackageName().endsWith(".phone")
+                                    !television()
                                             ? JobInfo.NETWORK_TYPE_UNMETERED
                                             : JobInfo.NETWORK_TYPE_ANY)
                             .build());
@@ -160,16 +186,17 @@ public final class UpdateEngine {
             return;
         }
         // בדיקה המופעלת בפתיחת האפליקציה מכבדת גם היא את מגבלת Wi-Fi של הטלפון.
-        if (context.getPackageName().endsWith(".phone")
+        if (!television()
                 && context.getSystemService(android.net.ConnectivityManager.class)
                         .isActiveNetworkMetered()) {
             if (done != null) done.run();
             return;
         }
-        request(true, true, done);
+        request(UpdatePolicy.automaticInstall(television(), automatic()), true, done);
     }
 
     public boolean request(boolean install, boolean background, Runnable done) {
+        boolean installRequested = UpdatePolicy.mayInstall(television(), install, background);
         if (!working.compareAndSet(false, true)) {
             if (done != null) done.run();
             return false;
@@ -207,8 +234,15 @@ public final class UpdateEngine {
                     }
                 if (!verified) download(spec, apk);
                 verify(context, apk, spec);
-                state("ready", "גרסה " + spec.versionName + " מוכנה להתקנה");
-                if (install) {
+                state(
+                        "ready",
+                        "גרסה "
+                                + spec.versionName
+                                + " מוכנה להתקנה"
+                                + (television()
+                                        ? ". ההתקנה תתחיל רק לאחר בחירה ואישור במסך הטלוויזיה."
+                                        : ""));
+                if (installRequested) {
                     if (background && (!automatic() || busy)) {
                         state("deferred", "העדכון מוכן ויותקן לאחר סיום העזרה");
                         return;
@@ -240,7 +274,7 @@ public final class UpdateEngine {
             JSONObject manifest =
                     new JSONObject(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
             if (manifest.getInt("schema") != 1) throw new IOException("UPDATE_METADATA");
-            String channel = context.getPackageName().endsWith(".phone") ? "phone" : "tv";
+            String channel = television() ? "tv" : "phone";
             return new UpdateSpec(manifest.getJSONObject(channel), context.getPackageName());
         }
     }
@@ -325,14 +359,19 @@ public final class UpdateEngine {
     }
 
     private void install(File apk, UpdateSpec spec, boolean background) throws Exception {
-        // גם קובץ שכבר ירד נבדק שוב ממש לפני מסירתו למתקין המערכת או לחיבור המקומי המאושר.
+        // הגנה נוספת בנקודת ההתקנה: גם בקשת רקע מפורשת אינה רשאית להתקין בסטרימר.
+        if (!UpdatePolicy.mayInstall(television(), true, background)) {
+            state("ready", "העדכון מוכן. ההתקנה ממתינה לבחירה ולאישור במסך הטלוויזיה.");
+            return;
+        }
+        // גם קובץ שכבר ירד נבדק שוב ממש לפני מסירתו למתקין המערכת.
         verify(context, apk, spec);
         if (background && (!automatic() || busy)) {
             state("deferred", "העדכון מוכן ויותקן לאחר סיום העזרה");
             return;
         }
         LocalInstaller local = localInstaller;
-        if (local != null && local.available()) {
+        if (UpdatePolicy.localInstall(television()) && local != null && local.available()) {
             prefs.edit()
                     .putLong("expected", spec.versionCode)
                     .putLong("installAt", System.currentTimeMillis())
@@ -376,7 +415,8 @@ public final class UpdateEngine {
         params.setAppPackageName(context.getPackageName());
         params.setSize(spec.bytes);
         if (Build.VERSION.SDK_INT >= 31)
-            params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+            params.setRequireUserAction(
+                    UpdatePolicy.userAction(Build.VERSION.SDK_INT, television()));
         int sessionId = installer.createSession(params);
         String nonce = UUID.randomUUID().toString();
         confirmation = null;
@@ -395,7 +435,11 @@ public final class UpdateEngine {
             session.fsync(output);
             // הזרם חייב להיסגר לפני commit; אחרת Android מסרב להתקין.
         }
-        state("installing", "מתקינים עדכון; החיבור יתחדש לאחר ההתקנה…");
+        state(
+                "installing",
+                television()
+                        ? "מכינים את חלון ההתקנה של Android. יש לאשר את העדכון במסך הטלוויזיה."
+                        : "מתקינים עדכון; החיבור יתחדש לאחר ההתקנה…");
         Intent result =
                 new Intent(context, UpdateReceiver.class)
                         .setAction(context.getPackageName() + ".UPDATE_RESULT")
@@ -414,7 +458,7 @@ public final class UpdateEngine {
         }
     }
 
-    public void installationResult(Intent intent) {
+    public synchronized void installationResult(Intent intent) {
         if (!Objects.equals(prefs.getString("nonce", ""), intent.getStringExtra("nonce"))
                 || prefs.getInt("session", -2)
                         != intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)) return;
@@ -426,6 +470,7 @@ public final class UpdateEngine {
                     "confirmation",
                     "Android דורש אישור התקנה אחד במכשיר. פתחו את עדכוני קרוב להמשך.");
         } else if (status == PackageInstaller.STATUS_SUCCESS) {
+            confirmation = null;
             state("current", "העדכון הושלם. הזיווגים נשמרו.");
         } else {
             confirmation = null;

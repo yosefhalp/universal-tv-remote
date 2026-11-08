@@ -2,13 +2,13 @@
   "schema": 1,
   "tv": {
     "applicationId": "org.yosef.karov",
-    "versionCode": 14,
-    "versionName": "1.4.2",
+    "versionCode": 15,
+    "versionName": "1.4.3",
     "minSdk": 28,
-    "bytes": 9177710,
-    "sha256": "7d2fa2a381ffc46dfe2029d5a0a9a5b5b387ca6cc56a54b0fde0b3067dfc7191",
-    "path": "karov-tv-1.4.2.apk",
-    "notes": "תיקון לחיצה וגלילה בסטרימרי Android 11 ללא מסך מגע; גרירה לפי יכולת המכשיר, הודעות ברורות וחיבור שליטה נוספת."
+    "bytes": 9184078,
+    "sha256": "b1372ccbf7a7a167990c4322db65c1a70a410cb90e64693866b4965bebb32fe5",
+    "path": "karov-tv-1.4.3.apk",
+    "notes": "עדכון הסטרימר דרך חלון ההתקנה הרשמי של Android; הורדה ברקע ללא התקנה אוטומטית, ושמירת הזיווגים."
   },
   "phone": {
     "applicationId": "org.yosef.karov.phone",

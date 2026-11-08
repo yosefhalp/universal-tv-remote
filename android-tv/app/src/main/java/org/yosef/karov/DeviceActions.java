@@ -79,11 +79,16 @@ public final class DeviceActions {
                     case "updateInfo" ->
                             callback.done(
                                     org.yosef.karov.updates.UpdateEngine.get(context).info(), null);
-                    case "updateCheck", "updateInstall" ->
+                    case "updateCheck" ->
                             callback.done(
                                     org.yosef.karov.updates.UpdateEngine.get(context)
-                                            .request(method.equals("updateInstall"), false, null),
+                                            .request(false, false, null),
                                     null);
+                    case "updateInstall" -> {
+                        // בקשה מפורשת מרחוק פותחת מסך קדמי, שמציג את חלון ההתקנה הרגיל של Android.
+                        org.yosef.karov.updates.UpdateActivity.openForInstall(
+                                context, opened -> callback.done(opened, null));
+                    }
                     case "apps" -> callback.done(apps(), null);
                     case "capture" -> {
                         if (MainActivity.visible) {
