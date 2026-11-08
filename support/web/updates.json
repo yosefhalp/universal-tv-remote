@@ -2,22 +2,22 @@
   "schema": 1,
   "tv": {
     "applicationId": "org.yosef.karov",
-    "versionCode": 13,
-    "versionName": "1.4.1",
+    "versionCode": 14,
+    "versionName": "1.4.2",
     "minSdk": 28,
-    "bytes": 9175698,
-    "sha256": "3395b1a597095d139ef703d3c8e88e426b027ebf0e6b7cda5a6b2d69ad16b841",
-    "path": "karov-tv-1.4.1.apk",
-    "notes": "חשבון אישי ומכשירים מסונכרנים; ניהול משתמשים ואיפוס סיסמאות; מגע ועכבר, שלט בסמלים ושליטת מדיה גם בתמונה מוגנת."
+    "bytes": 9177710,
+    "sha256": "7d2fa2a381ffc46dfe2029d5a0a9a5b5b387ca6cc56a54b0fde0b3067dfc7191",
+    "path": "karov-tv-1.4.2.apk",
+    "notes": "תיקון לחיצה וגלילה בסטרימרי Android 11 ללא מסך מגע; גרירה לפי יכולת המכשיר, הודעות ברורות וחיבור שליטה נוספת."
   },
   "phone": {
     "applicationId": "org.yosef.karov.phone",
-    "versionCode": 11,
-    "versionName": "1.4.1",
+    "versionCode": 12,
+    "versionName": "1.4.2",
     "minSdk": 28,
-    "bytes": 12133413,
-    "sha256": "b1be060322ae8747310edc475ff9b92436ba9e766d4d897980a02e0fad2d6c19",
-    "path": "karov-phone-1.4.1.apk",
-    "notes": "חשבון אישי ומכשירים מסונכרנים; ניהול משתמשים ואיפוס סיסמאות; מגע ועכבר, שלט בסמלים ושליטת מדיה גם בתמונה מוגנת."
+    "bytes": 12134545,
+    "sha256": "c481b682dd70d466f06261cd8eab8cf8e7634fb6258af31e891313586c517143",
+    "path": "karov-phone-1.4.2.apk",
+    "notes": "תיקון לחיצה וגלילה בסטרימרי Android 11 ללא מסך מגע; גרירה לפי יכולת המכשיר, הודעות ברורות וחיבור שליטה נוספת."
   }
 }

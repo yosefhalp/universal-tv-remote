@@ -42,7 +42,10 @@ export function pointerRequest(geometry, kind, points, duration = 60, dx = 0, dy
 }
 
 export class PointerSurface {
-  constructor({ surface, image, cursor, direct, pad, drag, click, up, down, hint, enabled, send }) {
+  constructor({
+    surface, image, cursor, direct, pad, drag, click, up, down, hint, enabled,
+    canDrag = () => true, send,
+  }) {
     Object.assign(this, {
       surface,
       image,
@@ -55,6 +58,7 @@ export class PointerSurface {
       down,
       hint,
       enabled,
+      canDrag,
       send,
     });
     this.position = [0.5, 0.5];
@@ -68,6 +72,7 @@ export class PointerSurface {
     direct.onclick = () => this.setMode('direct');
     pad.onclick = () => this.setMode('pad');
     drag.onclick = () => {
+      if (!this.canDrag()) return;
       this.armed = !this.armed;
       this.cancel();
       this.render();
@@ -159,15 +164,18 @@ export class PointerSurface {
     this.render();
   }
   render() {
+    if (!this.canDrag()) this.armed = false;
     this.direct.setAttribute('aria-pressed', String(this.mode === 'direct'));
     this.pad.setAttribute('aria-pressed', String(this.mode === 'pad'));
     this.drag.setAttribute('aria-pressed', String(this.armed));
-    this.drag.disabled = !this.ready() || this.mode !== 'pad';
+    this.drag.disabled = !this.ready() || this.mode !== 'pad' || !this.canDrag();
     for (const button of [this.click, this.up, this.down]) button.disabled = !this.ready();
     this.hint.textContent =
-      this.mode === 'direct'
-        ? 'לחיצה וגרירה על התמונה · גלגלת או שתי אצבעות לגלילה · גרירה נשלחת בשחרור'
-        : 'הזזה על התמונה מזיזה את הסמן · נגיעה קצרה ללחיצה · גרירה: הפעילו את כפתור הגרירה';
+      !this.canDrag()
+        ? 'נגיעה ללחיצה · גלגלת או שתי אצבעות לגלילה · גרירה ושליטה חופשית דורשות הפעלת שליטה נוספת בסטרימר'
+        : this.mode === 'direct'
+          ? 'לחיצה וגרירה על התמונה · גלגלת או שתי אצבעות לגלילה · גרירה נשלחת בשחרור'
+          : 'הזזה על התמונה מזיזה את הסמן · נגיעה קצרה ללחיצה · גרירה: הפעילו את כפתור הגרירה';
     this.surface.classList.toggle('pointer-ready', this.ready());
     this.cursor.hidden = !this.ready();
     if (this.ready()) {
@@ -284,6 +292,7 @@ export class PointerSurface {
   }
   async submit(kind, points, duration = 60, dx = 0, dy = 0) {
     if (!this.ready() || this.sending) return;
+    if (kind === 'drag' && !this.canDrag()) return;
     const request = pointerRequest(this.geometry, kind, points, duration, dx, dy);
     if (!request) return;
     this.sending = true;

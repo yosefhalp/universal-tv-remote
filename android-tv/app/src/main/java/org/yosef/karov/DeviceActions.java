@@ -27,6 +27,8 @@ public final class DeviceActions {
 
     public JSONObject info() throws Exception {
         LocalAdb adb = LocalAdb.get(context);
+        boolean accessibility = TvAccessibilityService.instance != null;
+        boolean gestures = accessibility && PointerCapabilities.gesturesSupported(context);
         String captureMode =
                 ScreenService.available()
                         ? "projection"
@@ -39,6 +41,13 @@ public final class DeviceActions {
                 .put("sdk", Build.VERSION.SDK_INT)
                 .put("localAdb", adb.ready())
                 .put("pointer", TvAccessibilityService.instance != null || adb.ready())
+                .put("pointerDrag", gestures || adb.ready())
+                .put(
+                        "pointerMode",
+                        gestures
+                                ? "accessibility"
+                                : adb.ready() ? "adb" : accessibility ? "controls" : "none")
+                .put("displayTouchscreen", PointerCapabilities.displayTouchscreen(context))
                 .put("accountSync", true)
                 .put("remoteStatus", adb.status())
                 .put("accessibility", TvAccessibilityService.instance != null)

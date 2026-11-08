@@ -3,5 +3,6 @@
         <activity android:name=".InputProbeActivity" android:exported="true" />
         <activity android:name=".PointerProbeActivity" android:exported="true" />
         <activity android:name=".PlaybackProbeActivity" android:exported="true" />
+        <receiver android:name=".PointerLabReceiver" android:exported="true" />
     </application>
 </manifest>

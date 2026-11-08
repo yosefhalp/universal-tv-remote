@@ -24,6 +24,7 @@ const account = new AccountClient({
 let accounts;
 let accountSyncSupported = false;
 let pointerSupported = false;
+let pointerDragSupported = true;
 const pointer = new PointerSurface({
   surface: $('screen'),
   image: $('frame'),
@@ -35,6 +36,7 @@ const pointer = new PointerSurface({
   up: $('pointer-up'),
   down: $('pointer-down'),
   hint: $('pointer-hint'),
+  canDrag: () => pointerDragSupported,
   enabled: () =>
     !!connection?.ready &&
     pointerSupported &&
@@ -59,7 +61,9 @@ const messages = {
   ACCOUNT_UPDATE_REQUIRED: 'יש לעדכן את קרוב בטלוויזיה לגרסה שתומכת בחשבונות ואז לנסות שוב.',
   ACCOUNT_LINK_PENDING: 'הסנכרון עדיין לא אושר. לחצו על סנכרון חשבון כדי לבדוק שוב.',
   POINTER_BUSY: 'המחווה הקודמת מסתיימת. אפשר לנסות שוב בעוד רגע.',
-  POINTER_CANCELLED: 'Android הפסיק את המחווה. אפשר לנסות שוב.',
+  POINTER_CANCELLED: 'הפעולה לא הושלמה. אפשר להשתמש בחצים או לבדוק את השליטה הנוספת בסטרימר.',
+  POINTER_REQUIRES_ADB: 'גרירה ושליטה חופשית דורשות הפעלת שליטה נוספת בסטרימר.',
+  POINTER_TARGET_UNAVAILABLE: 'אין כאן רכיב שניתן ללחוץ עליו. אפשר להשתמש בחצים או להפעיל שליטה נוספת.',
   STALE_GEOMETRY: 'המסך שינה כיוון או גודל. המתינו לתמונה החדשה.',
   NO_POINTER: 'יש להשלים את הרשאת הנגישות או את השליטה הנוספת בסטרימר.',
   BAD_POINTER: 'לא ניתן למפות את המיקום למסך הטלוויזיה.',
@@ -186,6 +190,9 @@ async function stop(show = true) {
   clearTimeout(reconnectTimer);
   connection?.close();
   connection = null;
+  pointerSupported = false;
+  pointerDragSupported = true;
+  pointer.armed = false;
   selected = null;
   accountConnectionToken = undefined;
   reconnects = 0;
@@ -279,6 +286,8 @@ async function connectDevice(device, retry = false) {
         : 'אפשר להשתמש גם בחיצי המקלדת, Enter ו־Escape. התמונה מיועדת לעזרה ולניווט.';
     $('capture-permission').hidden = info.captureMode !== 'permission';
     pointerSupported = info.pointer === true;
+    pointerDragSupported = info.pointerDrag !== false;
+    pointer.render();
     $('android-remote-status').textContent = info.remoteStatus || '';
     if (paused) clearFrame('התמונה מושהית');
     else if (info.firstFrame && !document.hidden) {
@@ -303,6 +312,11 @@ async function connectDevice(device, retry = false) {
   }
 }
 function setControls(enabled) {
+  if (!enabled) {
+    pointerSupported = false;
+    pointerDragSupported = true;
+    pointer.armed = false;
+  }
   for (const button of document.querySelectorAll(
     '[data-key], #text-form button, #apps button, #adb-enable, #adb-disable, #adb-status, #capture-permission, #refresh-controllers, #forget, #account-link',
   ))
@@ -532,14 +546,17 @@ $('pause-screen').onclick = () => {
 $('capture-permission').onclick = () => action('requestCapture');
 $('adb-enable').onclick = async () => {
   if (await action('adbEnable'))
-    notice('אם מופיעה בקשת ניפוי שגיאות בטלוויזיה, סמנו אישור קבוע ואשרו.');
+    notice('התחיל ניסיון חיבור בלבד. יש להפעיל מראש ניפוי שגיאות ברשת בהגדרות הסטרימר. אם תופיע בקשת אישור בטלוויזיה, אשרו אותה. בדקו את מצב השליטה הנוספת ואז התחברו מחדש לטלוויזיה בקרוב לעדכון יכולות השליטה.');
 };
 $('adb-disable').onclick = async () => {
   if (await action('adbDisable')) $('android-remote-status').textContent = 'שליטה נוספת כבויה';
 };
 $('adb-status').onclick = async () => {
   const info = await action('info');
-  if (info) $('android-remote-status').textContent = info.remoteStatus;
+  if (info) {
+    $('android-remote-status').textContent = info.remoteStatus;
+    notice('אם מצב השליטה הנוספת השתנה, התחברו מחדש לטלוויזיה בקרוב כדי לעדכן את יכולות השליטה.');
+  }
 };
 let updatePolling = false;
 async function refreshUpdate() {

@@ -48,9 +48,11 @@ public final class MainActivity extends ComponentActivity {
     private volatile RemoteClient pairingConnection;
     private LinearLayout content;
     private TextView status, screenMessage;
+    private Toast currentToast;
     private PointerSurface screen, fullScreen;
     private JSONObject frameMetadata;
     private boolean pointerSupported, pointerBusy, relativeMode, dragArmed;
+    private boolean pointerDragSupported = true;
     private ImageButton directModeButton, padModeButton, dragButton;
     private Dialog fullDialog;
     private Bitmap frame;
@@ -144,6 +146,10 @@ public final class MainActivity extends ComponentActivity {
     @Override
     protected void onDestroy() {
         destroyed = true;
+        if (currentToast != null) {
+            currentToast.cancel();
+            currentToast = null;
+        }
         tasks.shutdownNow();
         if (accounts != null) accounts.close();
         super.onDestroy();
@@ -631,12 +637,16 @@ public final class MainActivity extends ComponentActivity {
         getPreferences(MODE_PRIVATE).edit().putBoolean("pointerRelative", relative).apply();
         refreshPointerMode();
         toast(
-                relative
-                        ? "משטח מגע: הזזה באצבע, נגיעה ללחיצה ושתי אצבעות לגלילה"
-                        : "מגע ישיר: לחיצה וגרירה על התמונה; שתי אצבעות לגלילה");
+                !pointerDragSupported
+                        ? "נגיעה ללחיצה ושתי אצבעות לגלילה; גרירה ושליטה חופשית דורשות הפעלת שליטה"
+                              + " נוספת בסטרימר"
+                        : relative
+                                ? "משטח מגע: הזזה באצבע, נגיעה ללחיצה ושתי אצבעות לגלילה"
+                                : "מגע ישיר: לחיצה וגרירה על התמונה; שתי אצבעות לגלילה");
     }
 
     private void refreshPointerMode() {
+        if (!pointerDragSupported) dragArmed = false;
         if (screen != null) {
             screen.mode(relativeMode);
             screen.drag(dragArmed);
@@ -658,7 +668,8 @@ public final class MainActivity extends ComponentActivity {
         if (dragButton != null) {
             dragButton.setSelected(dragArmed);
             dragButton.setBackground(touchSurface(dragArmed ? 0xff203d69 : PANEL, 14));
-            dragButton.setEnabled(connected && pointerSupported && relativeMode);
+            dragButton.setEnabled(
+                    connected && pointerSupported && pointerDragSupported && relativeMode);
             dragButton.setAlpha(dragButton.isEnabled() ? 1 : .35f);
         }
     }
@@ -672,6 +683,10 @@ public final class MainActivity extends ComponentActivity {
                 || pointerBusy
                 || lastFrame == 0
                 || SystemClock.elapsedRealtime() - lastFrame > 4000) return;
+        if ("drag".equals(args.optString("kind")) && !pointerDragSupported) {
+            toast("גרירה ושליטה חופשית דורשות הפעלת שליטה נוספת בסטרימר.");
+            return;
+        }
         pointerBusy = true;
         active.call("pointer", args, 5000)
                 .whenComplete((value, error) ->
@@ -718,6 +733,8 @@ public final class MainActivity extends ComponentActivity {
         connection = null;
         connected = false;
         pointerSupported = false;
+        pointerDragSupported = true;
+        dragArmed = false;
         pointerBusy = false;
         if (previous != null) previous.close();
         setConnected(false);
@@ -766,6 +783,7 @@ public final class MainActivity extends ComponentActivity {
                             }
                             reconnects = 0;
                             pointerSupported = info.optBoolean("pointer");
+                            pointerDragSupported = info.optBoolean("pointerDrag", true);
                             accountSyncSupported = info.optBoolean("accountSync");
                             setConnected(true);
                             refreshPointerMode();
@@ -1505,11 +1523,11 @@ public final class MainActivity extends ComponentActivity {
                                                         new AlertDialog.Builder(this)
                                                                 .setTitle(
                                                                         "להסיר מכל המכשירים"
-                                                                            + " שבחשבון?")
+                                                                                + " שבחשבון?")
                                                                 .setMessage(
                                                                         "זיווגים מקומיים נשארים"
-                                                                            + " שמורים בטלפונים"
-                                                                            + " שבהם נוצרו.")
+                                                                                + " שמורים בטלפונים"
+                                                                                + " שבהם נוצרו.")
                                                                 .setPositiveButton(
                                                                         "הסרה",
                                                                         (c, e) ->
@@ -1818,12 +1836,15 @@ public final class MainActivity extends ComponentActivity {
                                         new AlertDialog.Builder(this)
                                                 .setTitle("שליטה נוספת")
                                                 .setMessage(
-                                                        "האפשרות דורשת הכנה חד־פעמית של ניפוי"
-                                                                + " שגיאות ברשת בסטרימר ואישור על"
-                                                                + " הטלוויזיה. להפעיל את החיבור"
-                                                                + " המקומי?")
+                                                        "יש להפעיל מראש ניפוי שגיאות ברשת בהגדרות"
+                                                            + " הסטרימר. הכפתור מנסה להתחבר בלבד"
+                                                            + " ואינו מפעיל את ההגדרה. אם תופיע"
+                                                            + " בקשת אישור בטלוויזיה, יש לאשר אותה."
+                                                            + " לאחר החיבור, התחברו מחדש לטלוויזיה"
+                                                            + " בקרוב כדי לעדכן את יכולות השליטה."
+                                                            + " לנסות להתחבר?")
                                                 .setPositiveButton(
-                                                        "הפעלה",
+                                                        "ניסיון חיבור",
                                                         (a, b) ->
                                                                 action(
                                                                         "adbEnable",
@@ -2057,7 +2078,10 @@ public final class MainActivity extends ComponentActivity {
     }
 
     private void toast(String message) {
-        if (!destroyed) Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        if (destroyed) return;
+        if (currentToast != null) currentToast.cancel();
+        currentToast = Toast.makeText(this, message, Toast.LENGTH_LONG);
+        currentToast.show();
     }
 
     private static String reason(Throwable error) {
@@ -2088,7 +2112,11 @@ public final class MainActivity extends ComponentActivity {
             case "LIMIT", "RATE_LIMITED", "TOO_MANY_REQUESTS" ->
                     "בוצעו יותר מדי ניסיונות. המתינו מעט ונסו שוב.";
             case "POINTER_BUSY" -> "המחווה הקודמת מסתיימת. נסו שוב בעוד רגע.";
-            case "POINTER_CANCELLED" -> "Android הפסיק את המחווה. אפשר לנסות שוב.";
+            case "POINTER_CANCELLED" ->
+                    "הפעולה לא הושלמה. אפשר להשתמש בחצים או לבדוק את השליטה הנוספת בסטרימר.";
+            case "POINTER_REQUIRES_ADB" -> "גרירה ושליטה חופשית דורשות הפעלת שליטה נוספת בסטרימר.";
+            case "POINTER_TARGET_UNAVAILABLE" ->
+                    "אין כאן רכיב שניתן ללחוץ עליו. אפשר להשתמש בחצים או להפעיל שליטה נוספת.";
             case "STALE_GEOMETRY" -> "המסך שינה כיוון או גודל. המתינו לתמונה החדשה.";
             case "NO_POINTER" -> "יש להשלים נגישות או שליטה נוספת בסטרימר.";
             case "BAD_POINTER" -> "לא ניתן למפות את המיקום למסך הטלוויזיה.";

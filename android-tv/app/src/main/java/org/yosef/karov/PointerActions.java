@@ -93,7 +93,18 @@ public final class PointerActions {
             callback.done(true, null);
             return;
         }
-        if (service != null) {
+        LocalAdb adb = LocalAdb.get(context);
+        boolean gestures = service != null && PointerCapabilities.gesturesSupported(context);
+        if (!gestures && !adb.ready()) {
+            if (service == null) callback.done(null, "NO_POINTER");
+            else if (spec.kind.equals("tap")) {
+                // בטלוויזיה ללא מסך מגע מפעילים את הרכיב שמתחת לסמן, בלי לשלוח מחווה שנדחית מראש.
+                boolean clicked = clickNode(service, spec, current);
+                callback.done(clicked ? true : null, clicked ? null : "POINTER_TARGET_UNAVAILABLE");
+            } else callback.done(null, "POINTER_REQUIRES_ADB");
+            return;
+        }
+        if (gestures) {
             Path path = new Path();
             float[][] points = spec.path();
             path.moveTo(points[0][0] * (spec.width - 1), points[0][1] * (spec.height - 1));
@@ -140,7 +151,6 @@ public final class PointerActions {
             busy = false;
             pending = null;
         }
-        LocalAdb adb = LocalAdb.get(context);
         if (adb.ready()) {
             long id = begin(callback, spec.duration);
             adb.pointer(
@@ -152,6 +162,58 @@ public final class PointerActions {
                                         finish(id, result, error);
                                     }));
         } else callback.done(null, "NO_POINTER");
+    }
+
+    private boolean clickNode(
+            TvAccessibilityService service, PointerSpec spec, BooleanSupplier current) {
+        AccessibilityNodeInfo root = service.getRootInActiveWindow();
+        if (root == null) return false;
+        ArrayDeque<AccessibilityNodeInfo> nodes = new ArrayDeque<>();
+        nodes.add(root);
+        AccessibilityNodeInfo chosen = null;
+        long area = Long.MAX_VALUE;
+        int visited = 0;
+        boolean longClick = spec.duration >= 500;
+        int x = Math.round(spec.points[0][0] * (spec.width - 1));
+        int y = Math.round(spec.points[0][1] * (spec.height - 1));
+        try {
+            while (!nodes.isEmpty() && visited++ < 512) {
+                AccessibilityNodeInfo node = nodes.removeFirst();
+                try {
+                    Rect bounds = new Rect();
+                    node.getBoundsInScreen(bounds);
+                    if (node.isVisibleToUser()
+                            && node.isEnabled()
+                            && (longClick ? node.isLongClickable() : node.isClickable())
+                            && bounds.contains(x, y)) {
+                        long size = (long) bounds.width() * bounds.height();
+                        // הרכיב הקטן ביותר שמתחת לסמן עדיף על מכולה לחיצה שמקיפה את כל השורה.
+                        if (size <= area) {
+                            if (chosen != null) chosen.recycle();
+                            chosen = AccessibilityNodeInfo.obtain(node);
+                            area = size;
+                        }
+                    }
+                    for (int i = 0; i < node.getChildCount() && nodes.size() < 512; i++) {
+                        AccessibilityNodeInfo child = node.getChild(i);
+                        if (child != null) nodes.add(child);
+                    }
+                } finally {
+                    node.recycle();
+                }
+            }
+            // ניסיון יחיד בלבד: כישלון או ביטול אינם סיבה ללחוץ שוב על רכיב אחר.
+            return chosen != null
+                    && current.getAsBoolean()
+                    && !MainActivity.visible
+                    && chosen.performAction(
+                            longClick
+                                    ? AccessibilityNodeInfo.ACTION_LONG_CLICK
+                                    : AccessibilityNodeInfo.ACTION_CLICK);
+        } finally {
+            if (chosen != null) chosen.recycle();
+            for (AccessibilityNodeInfo remaining : nodes) remaining.recycle();
+        }
     }
 
     private boolean queuedCurrent(long id, PointerSpec spec, BooleanSupplier current) {
