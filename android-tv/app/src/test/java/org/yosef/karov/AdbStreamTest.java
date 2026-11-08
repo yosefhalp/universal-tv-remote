@@ -103,6 +103,141 @@ public final class AdbStreamTest {
     }
 
     @Test
+    public void delayedDuplicateCloseAfterWriteAckDoesNotBreakFollowingExecutes() throws Exception {
+        byte[] echo = new byte[] {'k', 'a', 'r', 'o', 'v', '\n'};
+        // סדר החבילות מהסטרימר הפיזי: לאחר ACK לנתונים מתקבלים CLSE רגיל ועוד עותק מאוחר,
+        // שנקרא רק אחרי OPEN של הפקודה הבאה על אותו socket. אין שידור חוזר של פקודה.
+        FakeSocket socket =
+                new FakeSocket(
+                        packet(LocalAdb.OKAY, 42, 1, new byte[0]),
+                        packet(LocalAdb.WRTE, 42, 1, echo),
+                        packet(LocalAdb.CLSE, 42, 1, new byte[0]),
+                        packet(LocalAdb.CLSE, 42, 1, new byte[0]),
+                        packet(LocalAdb.OKAY, 43, 2, new byte[0]),
+                        packet(LocalAdb.WRTE, 43, 2, echo),
+                        packet(LocalAdb.CLSE, 43, 2, new byte[0]),
+                        packet(LocalAdb.CLSE, 0, 2, new byte[0]),
+                        packet(LocalAdb.OKAY, 44, 3, new byte[0]),
+                        packet(LocalAdb.WRTE, 44, 3, echo),
+                        packet(LocalAdb.CLSE, 44, 3, new byte[0]));
+        LocalAdb.StreamHistory history = new LocalAdb.StreamHistory(socket, 7);
+        for (int local = 1; local <= 3; local++)
+            assertArrayEquals(
+                    echo, LocalAdb.execute(socket, "echo karov", 1024, local, history, 7));
+        assertEquals(6, socket.writes.size());
+        for (int index = 0; index < 3; index++) {
+            LocalAdb.Packet open = socket.writes.get(index * 2);
+            LocalAdb.Packet ack = socket.writes.get(index * 2 + 1);
+            assertEquals(LocalAdb.OPEN, open.command);
+            assertEquals(index + 1, open.arg0);
+            assertEquals(LocalAdb.OKAY, ack.command);
+            assertEquals(index + 1, ack.arg0);
+            assertEquals(42 + index, ack.arg1);
+        }
+    }
+
+    @Test
+    public void closedStreamHistoryNeverHidesForeignDataOrUnrecognizedClose() throws Exception {
+        for (LocalAdb.Packet foreign :
+                new LocalAdb.Packet[] {
+                    packet(LocalAdb.CLSE, 43, 1, new byte[0]),
+                    packet(LocalAdb.WRTE, 42, 1, new byte[] {1}),
+                    packet(LocalAdb.OKAY, 42, 1, new byte[0]),
+                    packet(LocalAdb.CLSE, 42, 999, new byte[0]),
+                    packet(LocalAdb.CLSE, 0, 999, new byte[0])
+                }) {
+            FakeSocket socket =
+                    new FakeSocket(
+                            packet(LocalAdb.OKAY, 42, 1, new byte[0]),
+                            packet(LocalAdb.CLSE, 42, 1, new byte[0]),
+                            foreign);
+            LocalAdb.StreamHistory history = new LocalAdb.StreamHistory(socket, 7);
+            LocalAdb.execute(socket, "echo karov", 1024, 1, history, 7);
+            assertEquals(
+                    "ADB_STREAM",
+                    assertThrows(
+                                    IOException.class,
+                                    () ->
+                                            LocalAdb.execute(
+                                                    socket, "echo karov", 1024, 2, history, 7))
+                            .getMessage());
+        }
+    }
+
+    @Test
+    public void historyRejectsAnotherSocketOrGenerationBeforeSendingOpen() throws Exception {
+        FakeSocket first = new FakeSocket(), second = new FakeSocket();
+        LocalAdb.StreamHistory history = new LocalAdb.StreamHistory(first, 7);
+        assertEquals(
+                "ADB_STREAM",
+                assertThrows(
+                                IOException.class,
+                                () -> LocalAdb.execute(second, "echo karov", 1024, 1, history, 7))
+                        .getMessage());
+        assertEquals(
+                "ADB_STREAM",
+                assertThrows(
+                                IOException.class,
+                                () -> LocalAdb.execute(first, "echo karov", 1024, 1, history, 8))
+                        .getMessage());
+        assertTrue(first.writes.isEmpty());
+        assertTrue(second.writes.isEmpty());
+    }
+
+    @Test
+    public void sharedRawStreamHistoryIsBoundedAndRetainsInstallStreamValidation()
+            throws Exception {
+        FakeSocket socket = new FakeSocket();
+        LocalAdb.StreamHistory history = new LocalAdb.StreamHistory(socket, 7);
+        for (int local = 1; local <= LocalAdb.StreamHistory.LIMIT + 1; local++) {
+            LocalAdb.StreamState stream = new LocalAdb.StreamState(local);
+            assertTrue(
+                    history.accept(
+                            socket,
+                            7,
+                            stream,
+                            packet(LocalAdb.OKAY, 100 + local, local, new byte[0])));
+            assertTrue(
+                    history.accept(
+                            socket,
+                            7,
+                            stream,
+                            packet(LocalAdb.CLSE, 100 + local, local, new byte[0])));
+        }
+        // אותו מסנן משמש גם את זרם העלאת העדכון, לפני טיפול ב-ACK או בנתוני הפלט שלו.
+        LocalAdb.StreamState upload = new LocalAdb.StreamState(999);
+        assertEquals(
+                "ADB_STREAM",
+                assertThrows(
+                                IOException.class,
+                                () ->
+                                        history.accept(
+                                                socket,
+                                                7,
+                                                upload,
+                                                packet(LocalAdb.CLSE, 101, 1, new byte[0])))
+                        .getMessage());
+        assertFalse(history.accept(socket, 7, upload, packet(LocalAdb.CLSE, 102, 2, new byte[0])));
+        assertTrue(
+                history.accept(socket, 7, upload, packet(LocalAdb.OKAY, 9999, 999, new byte[0])));
+        assertTrue(
+                history.accept(
+                        socket, 7, upload, packet(LocalAdb.WRTE, 9999, 999, new byte[] {1})));
+        assertEquals(
+                "ADB_MESSAGE",
+                assertThrows(
+                                IOException.class,
+                                () ->
+                                        history.accept(
+                                                socket,
+                                                7,
+                                                upload,
+                                                packet(LocalAdb.CLSE, 102, 2, new byte[] {1})))
+                        .getMessage());
+        assertTrue(history.accept(socket, 7, upload, packet(LocalAdb.CLSE, 0, 999, new byte[0])));
+    }
+
+    @Test
     public void legacyZeroSenderCanCloseOnlyAnAlreadyOpenedStream() throws Exception {
         FakeSocket socket =
                 new FakeSocket(packet(LocalAdb.OKAY), packet(LocalAdb.CLSE, 0, LOCAL, new byte[0]));

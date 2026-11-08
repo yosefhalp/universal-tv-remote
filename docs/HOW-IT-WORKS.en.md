@@ -4,7 +4,7 @@
 
 ## Supported platforms
 
-The app talks to each platform through a driver in `src/main/drivers`. Every driver offers the same methods and declares its `capabilities` and `buttons`. The interface hides what a connected TV doesn't offer. Only the LG driver has been used with a real TV.
+The app talks to each platform through a driver in `src/main/drivers`. Every driver offers the same methods and declares its `capabilities` and `buttons`. The interface hides what a connected TV doesn't offer. The original project documents testing against a real LG device. The Android TV driver has also been used in a diagnostic tool against a physical Xiaomi device; this does not establish full desktop UI compatibility with Xiaomi. Tests of Karov, the separate app installed on the streamer, are documented in [support/VERIFY.md](../support/VERIFY.md).
 
 | Platform | Connection | Pairing | Stored secret |
 |---|---|---|---|

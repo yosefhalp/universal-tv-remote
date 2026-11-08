@@ -2,7 +2,9 @@
     <application android:usesCleartextTraffic="true" tools:replace="android:usesCleartextTraffic">
         <activity android:name=".InputProbeActivity" android:exported="true" />
         <activity android:name=".PointerProbeActivity" android:exported="true" />
+        <activity android:name=".TwoPanelProbeActivity" android:exported="false" />
         <activity android:name=".PlaybackProbeActivity" android:exported="true" />
         <receiver android:name=".PointerLabReceiver" android:exported="true" />
+        <receiver android:name=".NodeLabReceiver" android:exported="true" />
     </application>
 </manifest>

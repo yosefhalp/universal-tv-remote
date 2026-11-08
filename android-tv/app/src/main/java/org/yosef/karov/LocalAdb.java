@@ -32,6 +32,7 @@ public final class LocalAdb {
     private final Context context;
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
     private volatile Socket socket;
+    private volatile StreamHistory streams;
     private volatile boolean ready, running;
     private volatile long generation;
     private volatile String status = "שליטה נוספת אינה מופעלת";
@@ -72,6 +73,7 @@ public final class LocalAdb {
         if (heartbeat != null) heartbeat.cancel(false);
         close(socket);
         socket = null;
+        streams = null;
     }
 
     public void enable(boolean enabled) throws Exception {
@@ -106,6 +108,8 @@ public final class LocalAdb {
             while (running && current == generation) {
                 Packet packet = read(active);
                 if (packet.command == CNXN) {
+                    if (!running || current != generation || socket != active) return;
+                    streams = new StreamHistory(active, current);
                     ready = true;
                     retries = 0;
                     status = "שליטה נוספת מחוברת";
@@ -182,6 +186,7 @@ public final class LocalAdb {
         if (current != generation || socket != active) return;
         ready = false;
         socket = null;
+        streams = null;
         status = "החיבור המקומי נותק; מנסה שוב";
         if (heartbeat != null) heartbeat.cancel(false);
         if (running) retry = worker.schedule(this::connect, 2000, TimeUnit.MILLISECONDS);
@@ -282,16 +287,29 @@ public final class LocalAdb {
     }
 
     private byte[] execute(Socket active, String command, int limit) throws Exception {
-        return execute(active, command, limit, ++streamId);
+        return execute(active, command, limit, ++streamId, streams, generation);
     }
 
     static byte[] execute(Socket active, String command, int limit, int local) throws Exception {
+        return execute(active, command, limit, local, new StreamHistory(active, 0), 0);
+    }
+
+    static byte[] execute(
+            Socket active,
+            String command,
+            int limit,
+            int local,
+            StreamHistory history,
+            long generation)
+            throws Exception {
+        if (history == null) throw new IOException("ADB_UNAVAILABLE");
+        history.requireConnection(active, generation);
         StreamState stream = new StreamState(local);
         write(active, OPEN, local, 0, Crypto.bytes("exec:" + command + "\0"));
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         for (int count = 0; count < 8192; count++) {
             Packet packet = read(active);
-            stream.accept(packet);
+            if (!history.accept(active, generation, stream, packet)) continue;
             if (packet.command == WRTE) {
                 if (output.size() + packet.data.length > limit) throw new IOException("ADB_LIMIT");
                 output.write(packet.data);
@@ -302,6 +320,42 @@ public final class LocalAdb {
             } else if (packet.command != OKAY) throw new IOException("ADB_MESSAGE");
         }
         throw new IOException("ADB_LIMIT");
+    }
+
+    // כל הפקודות בחיבור עוברות באותו תור עבודה. ההיסטוריה אינה משותפת לחיבור או לדור חדש.
+    static final class StreamHistory {
+        static final int LIMIT = 64;
+        private final Socket owner;
+        private final long generation;
+        private final LinkedHashMap<Integer, Integer> closed = new LinkedHashMap<>();
+
+        StreamHistory(Socket owner, long generation) {
+            this.owner = owner;
+            this.generation = generation;
+        }
+
+        void requireConnection(Socket active, long current) throws IOException {
+            if (owner != active || generation != current) throw new IOException("ADB_STREAM");
+        }
+
+        boolean accept(Socket active, long current, StreamState stream, Packet packet)
+                throws IOException {
+            requireConnection(active, current);
+            if (packet.command == CLSE && packet.data.length != 0)
+                throw new IOException("ADB_MESSAGE");
+            // בקושחות מסוימות ACK ל-WRTE גורר CLSE כפול מאוחר. מדלגים רק על סגירה שכבר אומתה.
+            // הודעת נתונים, מזהה לא מוכר או peer שונה אינם יכולים להתחפש לסגירה הישנה.
+            if (packet.command == CLSE && packet.arg1 != stream.local) {
+                Integer peer = closed.get(packet.arg1);
+                if (peer != null && (packet.arg0 == peer || packet.arg0 == 0)) return false;
+            }
+            stream.accept(packet);
+            if (packet.command == CLSE) {
+                closed.put(stream.local, stream.peer);
+                while (closed.size() > LIMIT) closed.remove(closed.keySet().iterator().next());
+            }
+            return true;
+        }
     }
 
     static final class StreamState {
@@ -372,8 +426,11 @@ public final class LocalAdb {
                         () -> {
                             Socket active = socket;
                             long current = generation;
+                            StreamHistory history = streams;
                             if (!running || !ready || active == null)
                                 throw new IOException("ADB_UNAVAILABLE");
+                            if (history == null) throw new IOException("ADB_UNAVAILABLE");
+                            history.requireConnection(active, current);
                             try (InputStream input = new FileInputStream(apk)) {
                                 active.setSoTimeout(120000);
                                 int local = ++streamId;
@@ -392,7 +449,7 @@ public final class LocalAdb {
                                 ByteArrayOutputStream output = new ByteArrayOutputStream();
                                 for (int count = 0; count < 20000; count++) {
                                     Packet packet = read(active);
-                                    stream.accept(packet);
+                                    if (!history.accept(active, current, stream, packet)) continue;
                                     if (packet.command == OKAY) {
                                         awaitingAck = false;
                                     } else if (packet.command == WRTE) {

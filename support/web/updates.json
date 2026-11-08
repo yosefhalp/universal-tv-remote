@@ -2,13 +2,13 @@
   "schema": 1,
   "tv": {
     "applicationId": "org.yosef.karov",
-    "versionCode": 16,
-    "versionName": "1.4.4",
+    "versionCode": 18,
+    "versionName": "1.4.6",
     "minSdk": 28,
-    "bytes": 9187594,
-    "sha256": "d9e171fc1e6bd56dd0710ae56c84fb77a6627ece0b46210792d1a6a45f063d68",
-    "path": "karov-tv-1.4.4.apk",
-    "notes": "בדיקת אחסון פנימי לפני שליטה נוספת, הנחיות העברה ושמירת הזיווגים; העדכון מותקן בחלון Android הרשמי."
+    "bytes": 9195434,
+    "sha256": "10cedc342b70522b700e1aa01f80203037f3e69be24fc4a06e6a00c3a6f28012",
+    "path": "karov-tv-1.4.6.apk",
+    "notes": "תיקון ניתוקים בשיאומי ולחיצה מדויקת על שורות בהגדרות הטלוויזיה. הזיווג נשמר והעדכון דרך מתקין Android הרגיל."
   },
   "phone": {
     "applicationId": "org.yosef.karov.phone",

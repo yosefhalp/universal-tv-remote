@@ -17,6 +17,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayDeque;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 public final class PointerActions {
     private final Context context;
@@ -26,6 +27,8 @@ public final class PointerActions {
     private final PointerOperation operations = new PointerOperation();
     private DeviceActions.Result pending;
     private Runnable deadline;
+    private Runnable focusedClick;
+    private TwoPanelTarget focusedTarget;
 
     public PointerActions(Context context) {
         this.context = context;
@@ -45,6 +48,10 @@ public final class PointerActions {
     private void finish(long id, Object value, String error) {
         if (!operations.finish(id)) return;
         main.removeCallbacks(deadline);
+        if (focusedClick != null) main.removeCallbacks(focusedClick);
+        focusedClick = null;
+        if (focusedTarget != null) focusedTarget.close();
+        focusedTarget = null;
         busy = false;
         DeviceActions.Result reply = pending;
         pending = null;
@@ -89,6 +96,16 @@ public final class PointerActions {
             return;
         }
         TvAccessibilityService service = TvAccessibilityService.instance;
+        // התיקון נדרש גם כש-ADB זמין: מגע ישיר אינו מסנכרן את preview של TwoPanel.
+        if (service != null
+                && spec.kind.equals("tap")
+                && twoPanelTap(
+                        service::getRootInActiveWindow,
+                        () -> TvAccessibilityService.instance == service,
+                        spec,
+                        current,
+                        callback,
+                        TwoPanelTarget.SETTINGS)) return;
         if (service != null && spec.kind.equals("scroll") && scrollNode(service, spec)) {
             callback.done(true, null);
             return;
@@ -164,6 +181,103 @@ public final class PointerActions {
         } else callback.done(null, "NO_POINTER");
     }
 
+    // פרמטר החבילה נגיש רק לבדיקת fixture פנימית; מסלול RPC תמיד שולח את חבילת Settings הקבועה.
+    boolean twoPanelTap(
+            Supplier<AccessibilityNodeInfo> roots,
+            BooleanSupplier serviceCurrent,
+            PointerSpec spec,
+            BooleanSupplier current,
+            DeviceActions.Result callback,
+            String packageName) {
+        AccessibilityNodeInfo root = roots.get();
+        TwoPanelTarget.Selection selection;
+        try {
+            selection =
+                    TwoPanelTarget.select(
+                            root,
+                            Math.round(spec.points[0][0] * (spec.width - 1)),
+                            Math.round(spec.points[0][1] * (spec.height - 1)),
+                            packageName);
+        } finally {
+            if (root != null) root.recycle();
+        }
+        try (selection) {
+            if (!selection.recognized) return false;
+            if (spec.duration >= 500 || selection.target == null) {
+                callback.done(null, "POINTER_TARGET_UNAVAILABLE");
+                return true;
+            }
+            long id = begin(callback, spec.duration);
+            focusedTarget = selection.target;
+            selection.target = null;
+            try {
+                String error = operationFailure(id, spec, current);
+                if (error != null) {
+                    finish(id, null, error);
+                    return true;
+                }
+                AccessibilityNodeInfo beforeFocus = roots.get();
+                boolean valid;
+                try {
+                    valid =
+                            serviceCurrent.getAsBoolean()
+                                    && focusedTarget.current(beforeFocus, false);
+                } finally {
+                    if (beforeFocus != null) beforeFocus.recycle();
+                }
+                if (!valid
+                        || (!focusedTarget.row.isFocused()
+                                && !focusedTarget.row.performAction(
+                                        AccessibilityNodeInfo.ACTION_FOCUS))) {
+                    finish(id, null, "POINTER_TARGET_UNAVAILABLE");
+                    return true;
+                }
+                focusedClick =
+                        () -> {
+                            String failure = operationFailure(id, spec, current);
+                            if (failure != null) {
+                                finish(id, null, failure);
+                                return;
+                            }
+                            AccessibilityNodeInfo active = null;
+                            try {
+                                if (!serviceCurrent.getAsBoolean() || focusedTarget == null) {
+                                    finish(id, null, "POINTER_CANCELLED");
+                                    return;
+                                }
+                                active = roots.get();
+                                if (!focusedTarget.current(active, true)) {
+                                    finish(id, null, "POINTER_TARGET_UNAVAILABLE");
+                                    return;
+                                }
+                                failure = operationFailure(id, spec, current);
+                                if (failure != null) {
+                                    finish(id, null, failure);
+                                    return;
+                                }
+                                // פעולה יחידה על אותו node לאחר רענון. אין לחיצה בקואורדינטה ישנה
+                                // ואין fallback.
+                                boolean clicked =
+                                        focusedTarget.row.performAction(
+                                                AccessibilityNodeInfo.ACTION_CLICK);
+                                finish(
+                                        id,
+                                        clicked ? true : null,
+                                        clicked ? null : "POINTER_TARGET_UNAVAILABLE");
+                            } catch (RuntimeException failureException) {
+                                finish(id, null, "POINTER_TARGET_UNAVAILABLE");
+                            } finally {
+                                if (active != null) active.recycle();
+                            }
+                        };
+                main.postDelayed(focusedClick, 350);
+            } catch (RuntimeException error) {
+                finish(id, null, "POINTER_TARGET_UNAVAILABLE");
+            }
+            return true;
+        }
+    }
+
     private boolean clickNode(
             TvAccessibilityService service, PointerSpec spec, BooleanSupplier current) {
         AccessibilityNodeInfo root = service.getRootInActiveWindow();
@@ -219,6 +333,19 @@ public final class PointerActions {
     private boolean queuedCurrent(long id, PointerSpec spec, BooleanSupplier current) {
         // הבדיקה רצה בתור העבודה של ADB, ממש לפני שליחת הפקודה. תוקף נמדד בשעון מונוטוני
         // כדי שגם עיכוב בלולאת הממשק לא יאפשר למחווה שפג תוקפה להתחיל מאוחר יותר.
+        String error = operationFailure(id, spec, current);
+        if (error != null) {
+            String failure = error;
+            main.post(() -> finish(id, null, failure));
+            return false;
+        }
+        // ניתוק או ביטול בזמן קריאת ממדי המסך מבטלים גם את הפקודה הממתינה.
+        return operations.canStart(id, SystemClock.elapsedRealtime())
+                && current.getAsBoolean()
+                && !MainActivity.visible;
+    }
+
+    private String operationFailure(long id, PointerSpec spec, BooleanSupplier current) {
         String error = null;
         if (!operations.canStart(id, SystemClock.elapsedRealtime())) error = "POINTER_CANCELLED";
         else if (!current.getAsBoolean()) error = "DISCONNECTED";
@@ -235,15 +362,11 @@ public final class PointerActions {
                 error = "STALE_GEOMETRY";
             }
         }
-        if (error != null) {
-            String failure = error;
-            main.post(() -> finish(id, null, failure));
-            return false;
-        }
-        // ניתוק או ביטול בזמן קריאת ממדי המסך מבטלים גם את הפקודה הממתינה.
-        return operations.canStart(id, SystemClock.elapsedRealtime())
-                && current.getAsBoolean()
-                && !MainActivity.visible;
+        if (error == null && !operations.canStart(id, SystemClock.elapsedRealtime()))
+            error = "POINTER_CANCELLED";
+        if (error == null && !current.getAsBoolean()) error = "DISCONNECTED";
+        if (error == null && MainActivity.visible) error = "SECURE_CONTENT";
+        return error;
     }
 
     private boolean scrollNode(TvAccessibilityService service, PointerSpec spec) {
