@@ -13,10 +13,13 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.BooleanSupplier;
 
 public final class TvAccessibilityService extends AccessibilityService {
     public static volatile TvAccessibilityService instance;
     private final ExecutorService images = Executors.newSingleThreadExecutor();
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private static final long CAPTURE_INTERVAL = 350;
     private long lastCapture;
     private boolean capturing;
     private TextView badge;
@@ -130,61 +133,90 @@ public final class TvAccessibilityService extends AccessibilityService {
         return focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
     }
 
-    public void capture(DeviceActions.Result callback) {
+    public void capture(BooleanSupplier current, DeviceActions.Result callback) {
         if (Build.VERSION.SDK_INT < 30) {
             callback.done(null, "CAPTURE_PERMISSION");
             return;
         }
-        if (capturing || SystemClock.elapsedRealtime() - lastCapture < 335) {
+        if (capturing) {
             callback.done(null, "CAPTURE_BUSY");
             return;
         }
         capturing = true;
-        lastCapture = SystemClock.elapsedRealtime();
-        takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                getMainExecutor(),
-                new TakeScreenshotCallback() {
-                    @Override
-                    public void onSuccess(ScreenshotResult result) {
-                        try {
-                            images.execute(() -> {
-                                Bitmap hardware = null, software = null;
-                                try {
-                                    hardware =
-                                            Bitmap.wrapHardwareBuffer(
-                                                    result.getHardwareBuffer(),
-                                                    result.getColorSpace());
-                                    if (hardware == null) throw new Exception("CAPTURE_FAILED");
-                                    software = hardware.copy(Bitmap.Config.ARGB_8888, false);
-                                    callback.done(
-                                            frame(software, TvAccessibilityService.this), null);
-                                } catch (Exception error) {
-                                    callback.done(null, "CAPTURE_FAILED");
-                                } finally {
-                                    if (software != null) software.recycle();
-                                    if (hardware != null) hardware.recycle();
-                                    result.getHardwareBuffer().close();
-                                    new Handler(getMainLooper()).post(() -> capturing = false);
-                                }
-                            });
-                        } catch (java.util.concurrent.RejectedExecutionException error) {
-                            result.getHardwareBuffer().close();
-                            capturing = false;
-                            callback.done(null, "NO_ACCESSIBILITY");
-                        }
-                    }
+        // בקשה אחת מחכה לחלון הצילום הבא במקום להחזיר ״עסוק״ ולחכות לסבב רשת נוסף.
+        long wait = Math.max(0, CAPTURE_INTERVAL - (SystemClock.elapsedRealtime() - lastCapture));
+        if (wait == 0) takeFrame(current, callback);
+        else main.postDelayed(() -> takeFrame(current, callback), wait);
+    }
 
-                    @Override
-                    public void onFailure(int code) {
-                        capturing = false;
-                        callback.done(
-                                null,
-                                code == ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT
-                                        ? "CAPTURE_BUSY"
-                                        : code == 6 ? "SECURE_CONTENT" : "CAPTURE_FAILED");
-                    }
-                });
+    @android.annotation.TargetApi(30)
+    private void takeFrame(BooleanSupplier current, DeviceActions.Result callback) {
+        if (!current.getAsBoolean() || instance != this) {
+            completeCapture(callback, null, "SECURE_CONTENT");
+            return;
+        }
+        lastCapture = SystemClock.elapsedRealtime();
+        try {
+            takeScreenshot(
+                    Display.DEFAULT_DISPLAY,
+                    getMainExecutor(),
+                    new TakeScreenshotCallback() {
+                        @Override
+                        public void onSuccess(ScreenshotResult result) {
+                            try {
+                                images.execute(() -> {
+                                    Bitmap hardware = null, software = null;
+                                    try {
+                                        hardware =
+                                                Bitmap.wrapHardwareBuffer(
+                                                        result.getHardwareBuffer(),
+                                                        result.getColorSpace());
+                                        if (hardware == null) throw new Exception("CAPTURE_FAILED");
+                                        software = hardware.copy(Bitmap.Config.ARGB_8888, false);
+                                        JSONObject jpeg =
+                                                frame(software, TvAccessibilityService.this);
+                                        main.post(() -> {
+                                            boolean available =
+                                                    instance == TvAccessibilityService.this
+                                                            && current.getAsBoolean();
+                                            completeCapture(
+                                                    callback,
+                                                    available ? jpeg : null,
+                                                    available ? null : "SECURE_CONTENT");
+                                        });
+                                    } catch (Exception error) {
+                                        main.post(() ->
+                                                completeCapture(callback, null, "CAPTURE_FAILED"));
+                                    } finally {
+                                        if (software != null) software.recycle();
+                                        if (hardware != null) hardware.recycle();
+                                        result.getHardwareBuffer().close();
+                                    }
+                                });
+                            } catch (java.util.concurrent.RejectedExecutionException error) {
+                                result.getHardwareBuffer().close();
+                                completeCapture(callback, null, "NO_ACCESSIBILITY");
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(int code) {
+                            completeCapture(
+                                    callback,
+                                    null,
+                                    code == ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT
+                                            ? "CAPTURE_BUSY"
+                                            : code == 6 ? "SECURE_CONTENT" : "CAPTURE_FAILED");
+                        }
+                    });
+        } catch (RuntimeException error) {
+            completeCapture(callback, null, "CAPTURE_FAILED");
+        }
+    }
+
+    private void completeCapture(DeviceActions.Result callback, JSONObject frame, String error) {
+        capturing = false;
+        callback.done(frame, error);
     }
 
     public static JSONObject frame(Bitmap bitmap, android.content.Context context)

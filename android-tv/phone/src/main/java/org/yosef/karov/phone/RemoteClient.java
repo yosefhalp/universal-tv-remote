@@ -11,7 +11,7 @@ import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 // כל שינוי בסשן ובמונים רץ בתור יחיד. אין שידור חוזר של פקודה אחרי ניתוק.
-final class RemoteClient {
+class RemoteClient {
     private final String device, controller, secret, code, accountToken;
     private final Consumer<String> onClosed;
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();

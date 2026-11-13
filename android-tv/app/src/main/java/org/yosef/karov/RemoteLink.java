@@ -258,6 +258,7 @@ public final class RemoteLink {
                             @Override
                             public void onClosing(WebSocket ws, int code, String reason) {
                                 ws.close(code, null);
+                                dispatch(() -> lost(ws));
                             }
                         });
     }
@@ -635,16 +636,11 @@ public final class RemoteLink {
                 }
                 vault.revoke(target);
                 reply(session, id, true, null);
-                if (target.equals(controller))
-                    worker.schedule(
-                            () -> {
-                                if (cipher == session) {
-                                    simple("kick");
-                                    endSession();
-                                }
-                            },
-                            300,
-                            TimeUnit.MILLISECONDS);
+                if (target.equals(controller)) {
+                    // ה-ACK והניתוק נשמרים בסדר של אותו socket. ביטול ההרשאה נכנס לתוקף מיד.
+                    simple("kick");
+                    endSession();
+                }
                 return;
             }
             final JSONObject parameters = args;
@@ -778,6 +774,7 @@ public final class RemoteLink {
             if (reconnect != null) reconnect.cancel(false);
             clearPairing();
             endSession();
+            actions.close();
             if (socket != null) {
                 socket.cancel();
                 socket = null;

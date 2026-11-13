@@ -7,8 +7,8 @@ android {
         minSdk 28
         targetSdk 36
         // גרסת מעבדה נמוכה מאפשרת לבדוק את המעדכן בלי לפרסם או לדרוס חבילת הפצה.
-        versionCode = (project.findProperty('phoneVersionCode') ?: '14').toInteger()
-        versionName = (project.findProperty('phoneVersionName') ?: '1.4.3')
+        versionCode = (project.findProperty('phoneVersionCode') ?: '15').toInteger()
+        versionName = (project.findProperty('phoneVersionName') ?: '1.4.4')
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     buildFeatures { buildConfig true }

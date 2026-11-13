@@ -1,8 +1,8 @@
 // נשמר רק שלד הממשק. תמונות המסך, הודעות השליטה ומפתחות הזיווג אינם נשמרים במטמון השירות.
-const CACHE = 'karov-shell-v14';
+const CACHE = 'karov-shell-v15';
 const SHELL = [
   '/',
-  '/style.css?v=4',
+  '/style.css?v=5',
   '/pointer.mjs',
   '/app.mjs',
   '/connection.mjs',
@@ -11,6 +11,7 @@ const SHELL = [
   '/store.mjs',
   '/account.mjs',
   '/account-ui.mjs',
+  '/files.mjs',
   '/icon.svg',
   '/app.webmanifest',
 ];

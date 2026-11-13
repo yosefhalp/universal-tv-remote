@@ -18,11 +18,34 @@ public final class DeviceActions {
 
     private final Context context;
     private final PointerActions pointer;
+    private final TvFiles files;
+    private static final Set<String> FILE_ACTIONS =
+            Set.of(
+                    "fileDestinations",
+                    "fileList",
+                    "fileBegin",
+                    "fileChunk",
+                    "fileFinish",
+                    "fileCancel",
+                    "fileDelete",
+                    "fileOpen",
+                    "fileChooseFolder",
+                    "fileStorageSettings");
+    private static final Set<String> SCREEN_ACTIONS =
+            Set.of(
+                    "key",
+                    "text",
+                    "pointer",
+                    "capture",
+                    "launch",
+                    "requestCapture",
+                    "updateInstall");
     private final Handler main = new Handler(Looper.getMainLooper());
 
     public DeviceActions(Context context) {
         this.context = context.getApplicationContext();
         pointer = new PointerActions(this.context);
+        files = new TvFiles(this.context);
     }
 
     public JSONObject info() throws Exception {
@@ -52,6 +75,7 @@ public final class DeviceActions {
                                 : adb.ready() ? "adb" : accessibility ? "controls" : "none")
                 .put("displayTouchscreen", PointerCapabilities.displayTouchscreen(context))
                 .put("accountSync", true)
+                .put("files", true)
                 .put("remoteStatus", adb.status())
                 .put("accessibility", TvAccessibilityService.instance != null)
                 .put("captureMode", captureMode)
@@ -59,6 +83,7 @@ public final class DeviceActions {
     }
 
     public void active(boolean active) {
+        if (!active) files.disconnected();
         main.post(() -> {
             if (!active) pointer.disconnected();
             WakeActivity.session(context, active);
@@ -67,10 +92,22 @@ public final class DeviceActions {
         });
     }
 
-    public void execute(String method, JSONObject args, BooleanSupplier current, Result callback) {
+    void close() {
+        files.close();
+    }
+
+    public void execute(String method, JSONObject args, BooleanSupplier session, Result callback) {
+        if (FILE_ACTIONS.contains(method)) {
+            files.execute(method, args, session, callback);
+            return;
+        }
+        // לא מאפשרים לבקר מרוחק לאשר את הרשאת התיקייה. התנאי נשמר גם עבור קלט שממתין בתור.
+        boolean screen = SCREEN_ACTIONS.contains(method);
+        BooleanSupplier current =
+                () -> session.getAsBoolean() && (!screen || !TvFileStorage.folderSelectionActive());
         main.post(() -> {
             if (!current.getAsBoolean()) {
-                callback.done(null, "DISCONNECTED");
+                callback.done(null, session.getAsBoolean() ? "SECURE_CONTENT" : "DISCONNECTED");
                 return;
             }
             try {
@@ -100,7 +137,9 @@ public final class DeviceActions {
                         }
                         if (ScreenService.available()) ScreenService.capture(callback);
                         else if (service != null && Build.VERSION.SDK_INT >= 30)
-                            service.capture(callback);
+                            service.capture(
+                                    () -> current.getAsBoolean() && !MainActivity.visible,
+                                    callback);
                         else if (remote.ready()) remote.capture(current, callback);
                         else ScreenService.capture(callback);
                     }
@@ -123,6 +162,11 @@ public final class DeviceActions {
                             callback.done(key(key, service), null);
                         } else if (service == null && !remote.ready()) {
                             callback.done(null, "NO_ACCESSIBILITY");
+                        } else if (service != null
+                                && (key.equals("HOME") || key.equals("BACK"))
+                                && service.key(key)) {
+                            // פעולות מערכת ישירות חוסכות הפעלה של פקודת קלט ב-ADB בכל לחיצה.
+                            callback.done(true, null);
                         } else if (remote.ready()) remote.key(key, current, callback);
                         else callback.done(key(key, service), null);
                     }

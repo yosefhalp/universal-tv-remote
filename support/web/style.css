@@ -792,6 +792,78 @@ dialog::backdrop {
   background: #000a;
   backdrop-filter: blur(5px);
 }
+.session-actions,
+.files-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+#files-dialog {
+  width: min(680px, calc(100vw - 24px));
+  max-height: 88dvh;
+  padding: clamp(14px, 4vw, 26px);
+  overflow: auto;
+}
+#files-status,
+#files-space,
+#files-confirm-text {
+  overflow-wrap: anywhere;
+}
+#files-destination,
+#files-source,
+#files-progress {
+  display: block;
+  width: 100%;
+  margin-block: 8px;
+}
+#files-progress { accent-color: var(--accent); }
+#files-destination,
+#files-source::file-selector-button {
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--ink);
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  font: inherit;
+}
+#files-list input { accent-color: var(--accent); }
+.files-upload,
+.files-list-heading {
+  border-top: 1px solid var(--line);
+  padding-block: 14px 0;
+  margin-block-start: 16px !important;
+}
+.files-confirm {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin-block: 12px;
+}
+.files-list {
+  padding: 0;
+  list-style: none;
+}
+.files-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-block: 10px;
+}
+.files-list li div {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.files-list small { display: block; }
+@media (max-width: 420px) {
+  .session-heading:has(#files-open:not([hidden])) {
+    flex-wrap: wrap;
+  }
+  .files-list-heading { flex-wrap: wrap; }
+}
 dialog form {
   margin: 0;
 }

@@ -5,8 +5,10 @@ import { normalizeCode } from './srp.mjs';
 import { PointerSurface } from './pointer.mjs';
 import { AccountClient } from './account.mjs';
 import { accountUI, accountMessage, linkAccountTelevision } from './account-ui.mjs';
+import { filesUI } from './files.mjs';
 
 const $ = (id) => document.getElementById(id);
+const files = filesUI();
 let accountConnectionToken;
 const account = new AccountClient({
   onChange: () => {
@@ -52,6 +54,8 @@ const pointer = new PointerSurface({
 let connection,
   selected,
   frameTimer,
+  capturingGeneration,
+  captureSoon = false,
   reconnectTimer,
   generation = 0,
   lastFrame = 0,
@@ -200,6 +204,7 @@ async function showHome() {
 }
 async function stop(show = true) {
   expectedClose = true;
+  files.detach();
   generation++;
   clearTimeout(frameTimer);
   clearTimeout(reconnectTimer);
@@ -236,6 +241,7 @@ async function connectDevice(device, retry = false) {
     return;
   }
   const current = ++generation;
+  files.detach();
   expectedClose = true;
   connection?.close();
   expectedClose = false;
@@ -255,6 +261,7 @@ async function connectDevice(device, retry = false) {
     accountToken: device.account ? account.token : undefined,
     onClose: (reason) => {
       if (expectedClose || generation !== current) return;
+      files.detach();
       clearTimeout(frameTimer);
       setControls(false);
       clearFrame('החיבור נותק — התמונה אינה עדכנית');
@@ -286,6 +293,8 @@ async function connectDevice(device, retry = false) {
       device.pending = false;
       await saveDevice(device);
     }
+    if (generation !== current || !active.ready) return;
+    files.attach(active, info.files === true);
     reconnects = 0;
     accountSyncSupported = info.accountSync === true;
     clearTimeout(noticeTimer);
@@ -331,6 +340,7 @@ async function connectDevice(device, retry = false) {
 }
 function setControls(enabled) {
   if (!enabled) {
+    captureSoon = false;
     pointerSupported = false;
     pointerDragSupported = true;
     pointer.armed = false;
@@ -342,31 +352,52 @@ function setControls(enabled) {
   if (!localAdbSetupAllowed) $('adb-enable').disabled = true;
 }
 async function action(method, args) {
+  const current = generation;
   try {
-    return await connection.call(method, args);
+    const result = await connection.call(method, args);
+    if (result !== false && ['key', 'pointer', 'text', 'launch'].includes(method)) requestFreshFrame(current);
+    return result;
   } catch (error) {
     notice(explain(error));
     return undefined;
   }
 }
-async function captureLoop(current) {
-  if (current !== generation || !connection?.ready || paused || document.hidden) return;
+function canCapture(current) {
+  return current === generation && connection?.ready && !paused && !document.hidden;
+}
+function requestFreshFrame(current) {
+  if (!canCapture(current) || captureSoon) return;
+  // קלט שאושר מקדים את הצילום הבא. לחיצות נוספות מתאחדות לאותו רענון.
+  captureSoon = true;
+  if (capturingGeneration === current) return;
+  clearTimeout(frameTimer);
+  frameTimer = setTimeout(() => captureLoop(current), 65);
+}
+async function captureLoop(current, retry = false) {
+  if (!canCapture(current) || capturingGeneration === current) return;
+  capturingGeneration = current;
+  const afterInput = captureSoon;
+  captureSoon = false;
+  let retryBusy = false;
   const began = performance.now();
   try {
     const frame = await connection.call('capture', {}, 5000);
-    if (current !== generation || paused || document.hidden) return;
+    if (!canCapture(current)) return;
     showFrame(frame, Math.round(performance.now() - began));
   } catch (error) {
-    if (current !== generation) return;
+    if (!canCapture(current)) return;
+    // לגרסאות שמחזירות ״עסוק״ מיד, נותנים לצילום שאחרי קלט ניסיון אחד נוסף.
+    retryBusy = afterInput && !retry && error.message === 'CAPTURE_BUSY';
     if (error.message !== 'CAPTURE_BUSY' || Date.now() - lastFrame > 3000)
       clearFrame(explain(error));
     $('capture-permission').hidden = error.message !== 'CAPTURE_PERMISSION';
+  } finally {
+    if (capturingGeneration === current) capturingGeneration = undefined;
+    if (canCapture(current)) {
+      const delay = retryBusy ? 150 : captureSoon ? 65 : Math.max(100, Number($('quality').value) - (performance.now() - began));
+      frameTimer = setTimeout(() => captureLoop(current, retryBusy), delay);
+    }
   }
-  if (current === generation)
-    frameTimer = setTimeout(
-      () => captureLoop(current),
-      Math.max(100, Number($('quality').value) - (performance.now() - began)),
-    );
 }
 function showFrame(frame, elapsed) {
   if (
@@ -651,6 +682,7 @@ document.addEventListener('keydown', (event) => {
     $('confirm-dialog').open ||
     $('account-dialog').open ||
     $('account-reset-dialog').open ||
+    $('files-dialog')?.open ||
     event.altKey ||
     event.ctrlKey ||
     event.metaKey
@@ -674,6 +706,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     // חלון ברקע אינו תופס את הסטרימר. כך אפשר לפתוח את האפליקציה מהאייקון או ממכשיר אחר.
     generation++;
+    files.detach();
     clearTimeout(reconnectTimer);
     connection?.close('BACKGROUND');
     connection = null;
@@ -698,6 +731,7 @@ window.addEventListener('online', () => {
 });
 window.addEventListener('pagehide', () => {
   expectedClose = true;
+  files.detach();
   connection?.close();
 });
 window.addEventListener('pageshow', (event) => {

@@ -14,14 +14,19 @@
         <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent>
         <intent><action android:name="android.settings.SETTINGS"/></intent>
         <intent><action android:name="android.settings.ACCESSIBILITY_SETTINGS"/></intent>
+        <intent><action android:name="android.settings.INTERNAL_STORAGE_SETTINGS"/></intent>
+        <intent><action android:name="android.intent.action.OPEN_DOCUMENT_TREE"/></intent>
+        <provider android:authorities="com.android.externalstorage.documents"/>
         <package android:name="com.android.tv.settings"/>
     </queries>
     <application android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:label="קרוב — עזרה בטלוויזיה" android:icon="@drawable/icon" android:banner="@drawable/banner" android:supportsRtl="true" android:theme="@android:style/Theme.Material.NoActionBar" android:usesCleartextTraffic="false">
+        <provider android:name=".TvFileProvider" android:authorities="${applicationId}.received" android:exported="false" android:grantUriPermissions="true" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LEANBACK_LAUNCHER"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>
         <activity android:name=".CaptureConsentActivity" android:exported="false" android:launchMode="singleTask" android:taskAffinity="" android:excludeFromRecents="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <activity android:name=".WakeActivity" android:exported="false" android:launchMode="singleTask" android:taskAffinity="" android:excludeFromRecents="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <activity android:name=".MainActivity$FilesFolderActivity" android:exported="false" android:launchMode="singleTask" android:taskAffinity="" android:excludeFromRecents="true" />
         <service android:name=".SupportService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="עזרה משפחתית בטלוויזיה באמצעות נגישות שהמשתמש הפעיל, עם חיווי חיבור גלוי וביטול הרשאות מקומי."/>
         </service>

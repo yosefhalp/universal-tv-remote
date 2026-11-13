@@ -11,7 +11,7 @@
     <title>קרוב — מרכז השליטה</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="app.webmanifest" />
-    <link rel="stylesheet" href="style.css?v=4" />
+    <link rel="stylesheet" href="style.css?v=5" />
     <script type="module" src="app.mjs"></script>
   </head>
   <body>
@@ -168,9 +168,12 @@
             <p class="eyebrow">REMOTE SESSION</p>
             <h1 id="tv-name">הטלוויזיה</h1>
           </div>
-          <button id="disconnect" class="quiet">
-            סיום עזרה <span aria-hidden="true">↗</span>
-          </button>
+          <div class="session-actions">
+            <button id="files-open" class="quiet" type="button" hidden>קבצים / פינוי מקום</button>
+            <button id="disconnect" class="quiet">
+              סיום עזרה <span aria-hidden="true">↗</span>
+            </button>
+          </div>
         </div>
         <div class="workspace">
           <div class="screen-column">
@@ -386,6 +389,46 @@
       <h2 id="account-reset-title">איפוס סיסמה</h2><p id="account-reset-user"></p><label for="account-reset-password">סיסמה זמנית חדשה</label><input id="account-reset-password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
       <p>המשתמש יצטרך להחליף אותה בכניסה הבאה.</p><p id="account-reset-message" role="status"></p><div class="dialog-actions"><button type="button" id="account-reset-cancel">ביטול</button><button class="danger">איפוס וניתוק החיבורים</button></div>
     </form></dialog>
+    <dialog id="files-dialog" aria-labelledby="files-title">
+      <div class="account-heading">
+        <h2 id="files-title">קבצים / פינוי מקום</h2>
+        <button id="files-close" class="quiet" type="button" autofocus>סגירה</button>
+      </div>
+      <p id="files-status" role="status"></p>
+      <label for="files-destination">איפה לשמור או לחפש קבצים בטלוויזיה?</label>
+      <select id="files-destination"></select>
+      <p id="files-space" class="hint"></p>
+      <p id="files-folder-help" class="hint" hidden>בחירת תיקייה אינה זמינה בסטרימר הזה. אפשר להשתמש ביעדים המוצגים ולבדוק את הגדרות האחסון בטלוויזיה.</p>
+      <div class="files-actions">
+        <button id="files-folder" class="quiet" type="button" hidden>בחירת תיקייה בטלוויזיה</button>
+        <button id="files-settings" class="quiet" type="button">הגדרות אחסון בטלוויזיה</button>
+        <button id="files-refresh" class="quiet" type="button">רענון</button>
+      </div>
+      <form id="files-upload" class="files-upload">
+        <label for="files-source">בחירת קובץ מהמכשיר הזה</label>
+        <input id="files-source" type="file" />
+        <div class="files-actions">
+          <button id="files-send" class="primary" type="submit">שליחה לטלוויזיה</button>
+          <button id="files-cancel" class="quiet" type="button" hidden>ביטול ההעברה</button>
+        </div>
+        <progress id="files-progress" aria-label="התקדמות ההעברה" max="1" value="0" hidden></progress>
+      </form>
+      <div class="account-heading files-list-heading">
+        <h3 id="files-list-title">קבצים לפינוי מקום</h3>
+        <button id="files-delete" class="danger" type="button">מחיקת קבצים שנבחרו</button>
+      </div>
+      <p class="hint">הקבצים הגדולים מוצגים ראשונים. אפשר לבחור עד 20 קבצים למחיקה.</p>
+      <section id="files-confirm" class="files-confirm" aria-labelledby="files-confirm-title" hidden>
+        <h3 id="files-confirm-title">מחיקה מהטלוויזיה</h3>
+        <p id="files-confirm-text"></p>
+        <div class="files-actions">
+          <button id="files-delete-cancel" class="quiet" type="button">חזרה לרשימה</button>
+          <button id="files-delete-confirm" class="danger" type="button">מחיקה לצמיתות</button>
+        </div>
+      </section>
+      <ul id="files-list" class="files-list" aria-labelledby="files-list-title"></ul>
+      <button id="files-more" class="quiet" type="button" hidden>הצגת קבצים נוספים</button>
+    </dialog>
     <dialog id="confirm-dialog">
       <form method="dialog">
         <h2 id="confirm-title">אישור פעולה</h2>

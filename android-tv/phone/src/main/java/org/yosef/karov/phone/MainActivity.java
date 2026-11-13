@@ -31,7 +31,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public final class MainActivity extends ComponentActivity {
-    private static final int BG = Color.rgb(13, 16, 22),
+    static final int BG = Color.rgb(13, 16, 22),
             PANEL = Color.rgb(25, 30, 40),
             LINE = Color.rgb(56, 59, 68),
             MUTED = Color.rgb(178, 182, 192),
@@ -64,8 +64,19 @@ public final class MainActivity extends ComponentActivity {
     private int reconnects;
     private volatile int pairEpoch;
     private long lastFrame;
+    private RemoteClient capturing;
+    private boolean captureAfterInput;
+    private final Runnable nextCapture = () -> capture(connection);
     private JSONArray apps = new JSONArray();
     private volatile Call lookup;
+    private boolean filesSupported;
+    private final PhoneFiles files = new PhoneFiles(this);
+    private final ActivityResultLauncher<Intent> filePicker =
+            registerForActivityResult(
+                    new ActivityResultContracts.StartActivityForResult(),
+                    result ->
+                            files.picked(
+                                    result.getResultCode() == RESULT_OK ? result.getData() : null));
     private final ActivityResultLauncher<Intent> scanner =
             registerForActivityResult(
                     new ActivityResultContracts.StartActivityForResult(),
@@ -94,6 +105,7 @@ public final class MainActivity extends ComponentActivity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        files.restore(state);
         try {
             vault = new PhoneVault(this);
             accounts = new AccountClient(vault);
@@ -130,6 +142,7 @@ public final class MainActivity extends ComponentActivity {
         if (selected != null && connection == null) connect();
         main.post(staleFrame);
         refreshAccount(false);
+        files.resume();
     }
 
     @Override
@@ -149,12 +162,42 @@ public final class MainActivity extends ComponentActivity {
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        files.save(state);
+    }
+
+    RemoteClient fileConnection() {
+        return resumed && connected && !destroyed ? connection : null;
+    }
+
+    String fileTarget() {
+        JSONObject target = selected;
+        return target == null
+                ? ""
+                : target.optString("device") + ":" + target.optString("controller");
+    }
+
+    boolean supportsFiles() {
+        return filesSupported;
+    }
+
+    boolean filesResumed() {
+        return resumed && !destroyed;
+    }
+
+    void pickFile(Intent intent) {
+        filePicker.launch(intent);
+    }
+
+    @Override
     protected void onDestroy() {
         destroyed = true;
         if (currentToast != null) {
             currentToast.cancel();
             currentToast = null;
         }
+        files.destroy();
         tasks.shutdownNow();
         if (accounts != null) accounts.close();
         super.onDestroy();
@@ -168,11 +211,11 @@ public final class MainActivity extends ComponentActivity {
         setConnected(connected);
     }
 
-    private int dp(int value) {
+    int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
-    private TextView text(String value, int size, int color) {
+    TextView text(String value, int size, int color) {
         TextView view = new TextView(this);
         view.setText(value);
         view.setTextSize(size);
@@ -181,7 +224,7 @@ public final class MainActivity extends ComponentActivity {
         return view;
     }
 
-    private GradientDrawable shape(int color, int radius) {
+    GradientDrawable shape(int color, int radius) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
         drawable.setCornerRadius(dp(radius));
@@ -195,7 +238,7 @@ public final class MainActivity extends ComponentActivity {
                 shape(Color.WHITE, radius));
     }
 
-    private Button button(String label, boolean primary, Runnable action) {
+    Button button(String label, boolean primary, Runnable action) {
         Button button = new Button(this);
         button.setText(label);
         button.setAllCaps(false);
@@ -217,14 +260,14 @@ public final class MainActivity extends ComponentActivity {
         content.addView(view, params);
     }
 
-    private LinearLayout row() {
+    LinearLayout row() {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         return row;
     }
 
-    private void cell(LinearLayout row, View view) {
+    void cell(LinearLayout row, View view) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
         params.setMargins(dp(4), 0, dp(4), 0);
         row.addView(view, params);
@@ -357,7 +400,7 @@ public final class MainActivity extends ComponentActivity {
         add(status, 22);
     }
 
-    private ImageButton icon(String name, String label, Runnable action) {
+    ImageButton icon(String name, String label, Runnable action) {
         ImageButton button = new ImageButton(this);
         button.setImageDrawable(new RemoteIcon(name, Color.WHITE));
         button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
@@ -700,6 +743,7 @@ public final class MainActivity extends ComponentActivity {
                             pointerBusy = false;
                             if (!resumed) return;
                             if (error != null) toast(explain(error));
+                            else refreshAfterInput(active);
                         }));
     }
 
@@ -742,11 +786,17 @@ public final class MainActivity extends ComponentActivity {
         RemoteClient previous = connection;
         connection = null;
         connected = false;
+        capturing = null;
+        captureAfterInput = false;
+        main.removeCallbacks(nextCapture);
         pointerSupported = false;
         pointerDragSupported = true;
         dragArmed = false;
         pointerBusy = false;
-        if (previous != null) previous.close();
+        if (previous != null) {
+            previous.close();
+            files.disconnected();
+        }
         setConnected(false);
         clearFrame("החיבור הופסק");
     }
@@ -795,6 +845,7 @@ public final class MainActivity extends ComponentActivity {
                             pointerSupported = info.optBoolean("pointer");
                             pointerDragSupported = info.optBoolean("pointerDrag", true);
                             accountSyncSupported = info.optBoolean("accountSync");
+                            filesSupported = info.optBoolean("files");
                             setConnected(true);
                             refreshPointerMode();
                             status.setText("● מחוברים לטלוויזיה");
@@ -818,6 +869,7 @@ public final class MainActivity extends ComponentActivity {
                                             }));
                             heartbeat(active);
                             completePendingAccountSync(target, active);
+                            files.resume();
                         }));
     }
 
@@ -862,12 +914,34 @@ public final class MainActivity extends ComponentActivity {
         }
     }
 
+    private void refreshAfterInput(RemoteClient active) {
+        if (active != connection || !resumed || paused || !connected) return;
+        // אם צילום קודם עדיין חוזר, מחכים לו ואז מבקשים תמונה אחת עדכנית אחרי הקלט.
+        if (capturing == active) captureAfterInput = true;
+        else capture(active);
+    }
+
     private void capture(RemoteClient active) {
-        if (active == null || connection != active || !resumed || paused || !connected) return;
+        if (active == null
+                || connection != active
+                || !resumed
+                || paused
+                || !connected
+                || capturing != null) return;
+        main.removeCallbacks(nextCapture);
+        if (files.transferring()) {
+            main.postDelayed(nextCapture, 500);
+            return;
+        }
+        capturing = active;
         active.call("capture", new JSONObject(), 5000)
                 .whenComplete((value, error) ->
                         main.post(() -> {
-                            if (connection != active || !resumed || paused) return;
+                            if (capturing != active || connection != active || !resumed) return;
+                            capturing = null;
+                            boolean refresh = captureAfterInput;
+                            captureAfterInput = false;
+                            if (paused) return;
                             if (error != null) {
                                 String reason = reason(error);
                                 if (Arrays.asList("NETWORK", "DISCONNECTED", "REQUEST_TIMEOUT")
@@ -878,9 +952,16 @@ public final class MainActivity extends ComponentActivity {
                                 if (!reason.equals("CAPTURE_BUSY")
                                         || SystemClock.elapsedRealtime() - lastFrame > 3000)
                                     clearFrame(explain(error));
-                            } else if (value instanceof JSONObject)
-                                display((JSONObject) value, active);
-                            main.postDelayed(() -> capture(active), 500);
+                                // במצב עומס משאירים מרווח לפני בקשה חדשה.
+                                main.postDelayed(
+                                        nextCapture,
+                                        refresh && reason.equals("CAPTURE_BUSY") ? 120 : 500);
+                                return;
+                            }
+                            if (value instanceof JSONObject image && !refresh)
+                                display(image, active);
+                            if (refresh) capture(active);
+                            else main.postDelayed(nextCapture, 500);
                         }));
     }
 
@@ -970,6 +1051,10 @@ public final class MainActivity extends ComponentActivity {
                                 toast(explain(error));
                                 if (Arrays.asList("NETWORK", "DISCONNECTED", "REQUEST_TIMEOUT")
                                         .contains(reason(error))) lost(active, error);
+                            } else if ("key".equals(method)
+                                    || "text".equals(method)
+                                    || "launch".equals(method)) {
+                                refreshAfterInput(active);
                             }
                         }));
     }
@@ -1997,6 +2082,7 @@ public final class MainActivity extends ComponentActivity {
             return;
         }
         String[] items = {
+            "קבצים ופינוי מקום",
             "החלפת טלוויזיה",
             "מכשירים מורשים",
             "בקשת שיתוף בטלוויזיה",
@@ -2017,7 +2103,11 @@ public final class MainActivity extends ComponentActivity {
                 .setItems(
                         items,
                         (d, which) -> {
-                            switch (which) {
+                            if (which == 0) {
+                                files.open();
+                                return;
+                            }
+                            switch (which - 1) {
                                 case 12 -> accountDialog();
                                 case 13 -> syncTelevision();
                                 case 0 -> home();
@@ -2305,7 +2395,7 @@ public final class MainActivity extends ComponentActivity {
         currentToast.show();
     }
 
-    private static String reason(Throwable error) {
+    static String reason(Throwable error) {
         if (error == null) return "FAILED";
         while (error.getCause() != null) error = error.getCause();
         return error instanceof TimeoutException
@@ -2341,7 +2431,7 @@ public final class MainActivity extends ComponentActivity {
             case "POINTER_REQUIRES_ADB" -> "גרירה ושליטה חופשית דורשות הפעלת שליטה נוספת בסטרימר.";
             case "APP_STORAGE_EXTERNAL" ->
                     "יש להעביר את קרוב מהכונן החיצוני לאחסון הפנימי בסטרימר לפני הפעלת שליטה נוספת."
-                        + " אין למחוק נתונים.";
+                            + " אין למחוק נתונים.";
             case "POINTER_TARGET_UNAVAILABLE" ->
                     "אין כאן רכיב שניתן ללחוץ עליו. אפשר להשתמש בחצים או להפעיל שליטה נוספת.";
             case "STALE_GEOMETRY" -> "המסך שינה כיוון או גודל. המתינו לתמונה החדשה.";

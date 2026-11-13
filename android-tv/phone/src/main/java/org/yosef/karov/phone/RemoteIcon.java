@@ -53,6 +53,9 @@ public final class RemoteIcon extends Drawable {
                 line(c, 6, 6, 18, 18);
                 line(c, 18, 6, 6, 18);
             }
+            case "folder" -> {
+                line(c, 3, 7, 3, 19, 21, 19, 21, 7, 11, 7, 9, 5, 3, 5, 3, 7);
+            }
             case "expand" -> {
                 line(c, 9, 3, 3, 3, 3, 9);
                 line(c, 15, 3, 21, 3, 21, 9);

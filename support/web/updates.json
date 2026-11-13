@@ -2,22 +2,22 @@
   "schema": 1,
   "tv": {
     "applicationId": "org.yosef.karov",
-    "versionCode": 18,
-    "versionName": "1.4.6",
+    "versionCode": 19,
+    "versionName": "1.4.7",
     "minSdk": 28,
-    "bytes": 9195434,
-    "sha256": "10cedc342b70522b700e1aa01f80203037f3e69be24fc4a06e6a00c3a6f28012",
-    "path": "karov-tv-1.4.6.apk",
-    "notes": "תיקון ניתוקים בשיאומי ולחיצה מדויקת על שורות בהגדרות הטלוויזיה. הזיווג נשמר והעדכון דרך מתקין Android הרגיל."
+    "bytes": 9233720,
+    "sha256": "f632ddfef037f90f696d196348f46ff633d74741d3afae9b16b9308807127480",
+    "path": "karov-tv-1.4.7.apk",
+    "notes": "קבצים ופינוי מקום, בחירת אחסון פנימי או USB זמין, ורענון תמונה מהיר אחרי פקודת שלט."
   },
   "phone": {
     "applicationId": "org.yosef.karov.phone",
-    "versionCode": 14,
-    "versionName": "1.4.3",
+    "versionCode": 15,
+    "versionName": "1.4.4",
     "minSdk": 28,
-    "bytes": 12153261,
-    "sha256": "3d2b29b5a66ca9ea15cceb7ed3abe643a7659c117f703c4938cefc3ba68a8f53",
-    "path": "karov-phone-1.4.3.apk",
-    "notes": "סנכרון טלוויזיה מהמסך הראשי לחשבון, הודעות התקדמות ואישור שמירה, הגנה על החלפת חשבון ובדיקת אחסון הסטרימר."
+    "bytes": 12191551,
+    "sha256": "5afef8e362dc48e9909ee75f9eeb76815d33d933ac962619e452f6bde0eec4f2",
+    "path": "karov-phone-1.4.4.apk",
+    "notes": "קבצים ופינוי מקום, בחירת אחסון פנימי או USB זמין, ורענון תמונה מהיר אחרי פקודת שלט."
   }
 }
